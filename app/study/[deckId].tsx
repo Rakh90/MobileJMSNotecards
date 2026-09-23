@@ -2,12 +2,14 @@ import { useEffect, useState } from 'react'
 import { View, Text, Pressable, StyleSheet, ActivityIndicator, ScrollView } from 'react-native'
 import { useLocalSearchParams, useNavigation, router } from 'expo-router'
 import { readDeckFile, writeDeckFile } from '../../lib/workspace'
+import { readSampleDeck, writeSampleDeck, resetSampleDeck, SAMPLE_DECK_URI } from '../../lib/sampleDeck'
 import { SRS_DUE_KEY, SRS_INTERVAL_KEY, SRS_EASE_KEY, DEFAULT_SRS, isCardDue, nextSrsState } from '../../lib/srs'
 import type { DatabaseFile, DatabaseRow } from '../../lib/types'
 
 export default function StudyScreen() {
   const { deckId } = useLocalSearchParams<{ deckId: string }>()
   const uri = decodeURIComponent(deckId ?? '')
+  const isSample = uri === SAMPLE_DECK_URI
   const navigation = useNavigation()
 
   const [db, setDb] = useState<DatabaseFile | null>(null)
@@ -16,17 +18,30 @@ export default function StudyScreen() {
   const [gradedCount, setGradedCount] = useState(0)
   const [error, setError] = useState<string | null>(null)
 
-  useEffect(() => {
+  function load(): void {
     if (!uri) return
-    readDeckFile(uri)
+    const read = isSample ? readSampleDeck() : readDeckFile(uri)
+    read
       .then((file) => {
         setDb(file)
         navigation.setOptions({ title: file.title })
         setQueue(file.rows.filter((r) => isCardDue(r.properties[SRS_DUE_KEY])))
       })
       .catch(() => setError('Could not open this deck.'))
+  }
+
+  useEffect(() => {
+    load()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [uri])
+
+  async function resetSample(): Promise<void> {
+    await resetSampleDeck()
+    setGradedCount(0)
+    setShowBack(false)
+    setError(null)
+    load()
+  }
 
   async function grade(gotIt: boolean): Promise<void> {
     if (!db || queue.length === 0) return
@@ -57,7 +72,8 @@ export default function StudyScreen() {
     setGradedCount((c) => c + 1)
     setShowBack(false)
     try {
-      await writeDeckFile(uri, nextDb)
+      if (isSample) await writeSampleDeck(nextDb)
+      else await writeDeckFile(uri, nextDb)
     } catch {
       setError('Studied, but saving progress failed — check the folder still has write access.')
     }
@@ -94,6 +110,11 @@ export default function StudyScreen() {
         <Pressable style={styles.button} onPress={() => router.back()}>
           <Text style={styles.buttonText}>Back to decks</Text>
         </Pressable>
+        {isSample && (
+          <Pressable style={styles.linkButton} onPress={resetSample}>
+            <Text style={styles.linkButtonText}>Reset sample deck progress</Text>
+          </Pressable>
+        )}
       </View>
     )
   }
@@ -155,5 +176,7 @@ const styles = StyleSheet.create({
   gradeButton: { flex: 1, paddingVertical: 14, borderRadius: 10, alignItems: 'center' },
   gradeBad: { backgroundColor: '#d1453b' },
   gradeGood: { backgroundColor: '#2b8a3e' },
-  gradeButtonText: { color: '#fff', fontWeight: '600', fontSize: 15 }
+  gradeButtonText: { color: '#fff', fontWeight: '600', fontSize: 15 },
+  linkButton: { padding: 12, marginTop: 4 },
+  linkButtonText: { color: '#5b4cf0', fontSize: 13.5 }
 })
