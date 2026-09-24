@@ -8,7 +8,7 @@ import { findFolderByName } from '../lib/driveApi'
 import { SAMPLE_DECK_URI } from '../lib/sampleDeck'
 import { useDecks } from '../lib/useDecks'
 import { useDeckFolders } from '../lib/useDeckFolders'
-import { createFolder, setDeckFolder, descendantFolderIds } from '../lib/deckFolders'
+import { createFolder, setDeckFolder, trashFolder, descendantFolderIds } from '../lib/deckFolders'
 import DeckRow from '../components/DeckRow'
 import MoveToFolderModal from '../components/MoveToFolderModal'
 import { useTheme, type Theme } from '../lib/theme'
@@ -18,7 +18,7 @@ export default function DeckListScreen() {
   const styles = makeStyles(theme)
   const insets = useSafeAreaInsets()
   const { workspaceUri, setWorkspaceUri, decks, sampleDeck, loading, error, setError, refresh } = useDecks()
-  const { folders, assignments, reload: reloadFolders } = useDeckFolders()
+  const { folders, assignments, trashedCount, reload: reloadFolders } = useDeckFolders()
   const [driveConnecting, setDriveConnecting] = useState(false)
   const [search, setSearch] = useState('')
   const [creatingFolder, setCreatingFolder] = useState(false)
@@ -63,6 +63,11 @@ export default function DeckListScreen() {
   async function changeFolder(): Promise<void> {
     await clearWorkspaceUri()
     setWorkspaceUri(null)
+  }
+
+  async function removeFolder(id: string): Promise<void> {
+    await trashFolder(id)
+    reloadFolders()
   }
 
   async function submitNewFolder(): Promise<void> {
@@ -174,16 +179,20 @@ export default function DeckListScreen() {
                     const idsInTree = new Set([f.id, ...descendantFolderIds(folders, f.id)])
                     const count = decks.filter((d) => assignments[d.uri] && idsInTree.has(assignments[d.uri])).length
                     return (
-                      <Pressable
-                        key={f.id}
-                        style={styles.folderRow}
-                        onPress={() => router.push(`/folder/${f.id}?name=${encodeURIComponent(f.name)}`)}
-                      >
-                        <Text style={styles.folderRowText}>📁 {f.name}</Text>
-                        <Text style={styles.folderRowCount}>
-                          {count} deck{count === 1 ? '' : 's'} ›
-                        </Text>
-                      </Pressable>
+                      <View key={f.id} style={styles.folderRow}>
+                        <Pressable
+                          style={styles.folderRowMain}
+                          onPress={() => router.push(`/folder/${f.id}?name=${encodeURIComponent(f.name)}`)}
+                        >
+                          <Text style={styles.folderRowText}>📁 {f.name}</Text>
+                          <Text style={styles.folderRowCount}>
+                            {count} deck{count === 1 ? '' : 's'} ›
+                          </Text>
+                        </Pressable>
+                        <Pressable style={styles.folderTrashButton} onPress={() => removeFolder(f.id)} hitSlop={8}>
+                          <Text style={styles.folderTrashText}>🗑</Text>
+                        </Pressable>
+                      </View>
                     )
                   })}
 
@@ -234,9 +243,16 @@ export default function DeckListScreen() {
         )}
       </ScrollView>
       {workspaceUri && (
-        <Pressable style={[styles.linkButton, { paddingBottom: 14 + insets.bottom }]} onPress={changeFolder}>
-          <Text style={styles.linkButtonText}>Change folder</Text>
-        </Pressable>
+        <View style={[styles.bottomLinks, { paddingBottom: 14 + insets.bottom }]}>
+          <Pressable style={styles.linkButton} onPress={changeFolder}>
+            <Text style={styles.linkButtonText}>Change folder</Text>
+          </Pressable>
+          {trashedCount > 0 && (
+            <Pressable style={styles.linkButton} onPress={() => router.push('/trash')}>
+              <Text style={styles.linkButtonText}>🗑 Trash ({trashedCount})</Text>
+            </Pressable>
+          )}
+        </View>
       )}
       <MoveToFolderModal
         deckTitle={moveTarget?.title ?? null}
@@ -283,16 +299,23 @@ function makeStyles(theme: Theme) {
     folderRow: {
       flexDirection: 'row',
       alignItems: 'center',
-      justifyContent: 'space-between',
-      padding: 14,
       borderRadius: 10,
       borderWidth: 1,
       borderColor: theme.border,
       backgroundColor: theme.cardBg,
       marginBottom: 10
     },
+    folderRowMain: {
+      flex: 1,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      padding: 14
+    },
     folderRowText: { fontSize: 15.5, fontWeight: '600', color: theme.text },
     folderRowCount: { fontSize: 13, color: theme.textMuted },
+    folderTrashButton: { paddingHorizontal: 14, paddingVertical: 14 },
+    folderTrashText: { fontSize: 16 },
     newFolderPrompt: { paddingVertical: 10, marginBottom: 10 },
     newFolderPromptText: { color: theme.accent, fontSize: 14, fontWeight: '600' },
     newFolderRow: { flexDirection: 'row', gap: 8, marginBottom: 12 },
@@ -309,6 +332,7 @@ function makeStyles(theme: Theme) {
     },
     newFolderCreate: { backgroundColor: theme.accent, borderRadius: 8, paddingHorizontal: 14, justifyContent: 'center' },
     newFolderCreateText: { color: theme.accentContrast, fontWeight: '600', fontSize: 13.5 },
+    bottomLinks: { flexDirection: 'row', justifyContent: 'center', gap: 24 },
     linkButton: { padding: 14, alignItems: 'center' },
     linkButtonText: { color: theme.accent, fontSize: 13.5 }
   })

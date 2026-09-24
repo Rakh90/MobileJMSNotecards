@@ -3,7 +3,7 @@ import { View, Text, ScrollView, Pressable, TextInput, StyleSheet, RefreshContro
 import { useLocalSearchParams, useNavigation, router } from 'expo-router'
 import { useDecks } from '../../lib/useDecks'
 import { useDeckFolders } from '../../lib/useDeckFolders'
-import { setDeckFolder, createFolder, descendantFolderIds } from '../../lib/deckFolders'
+import { setDeckFolder, createFolder, trashFolder, descendantFolderIds } from '../../lib/deckFolders'
 import DeckRow from '../../components/DeckRow'
 import MoveToFolderModal from '../../components/MoveToFolderModal'
 import { useTheme, type Theme } from '../../lib/theme'
@@ -22,9 +22,22 @@ export default function FolderScreen() {
 
   const folderName = folders.find((f) => f.id === folderId)?.name ?? name ?? 'Folder'
 
+  async function deleteThisFolder(): Promise<void> {
+    await trashFolder(folderId)
+    router.back()
+  }
+
   useEffect(() => {
-    navigation.setOptions({ title: folderName })
-  }, [folderName, navigation])
+    navigation.setOptions({
+      title: folderName,
+      headerRight: () => (
+        <Pressable onPress={deleteThisFolder} hitSlop={10}>
+          <Text style={{ fontSize: 17 }}>🗑</Text>
+        </Pressable>
+      )
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [folderName, navigation, folderId])
 
   const subfolders = folders.filter((f) => f.parentId === folderId)
   const ownDecks = decks.filter((d) => assignments[d.uri] === folderId)
@@ -102,16 +115,24 @@ export default function FolderScreen() {
               const idsInTree = new Set([f.id, ...descendantFolderIds(folders, f.id)])
               const count = decks.filter((d) => assignments[d.uri] && idsInTree.has(assignments[d.uri])).length
               return (
-                <Pressable
-                  key={f.id}
-                  style={styles.folderRow}
-                  onPress={() => router.push(`/folder/${f.id}?name=${encodeURIComponent(f.name)}`)}
-                >
-                  <Text style={styles.folderRowText}>📁 {f.name}</Text>
-                  <Text style={styles.folderRowCount}>
-                    {count} deck{count === 1 ? '' : 's'} ›
-                  </Text>
-                </Pressable>
+                <View key={f.id} style={styles.folderRow}>
+                  <Pressable
+                    style={styles.folderRowMain}
+                    onPress={() => router.push(`/folder/${f.id}?name=${encodeURIComponent(f.name)}`)}
+                  >
+                    <Text style={styles.folderRowText}>📁 {f.name}</Text>
+                    <Text style={styles.folderRowCount}>
+                      {count} deck{count === 1 ? '' : 's'} ›
+                    </Text>
+                  </Pressable>
+                  <Pressable
+                    style={styles.folderTrashButton}
+                    onPress={() => trashFolder(f.id).then(reloadFolders)}
+                    hitSlop={8}
+                  >
+                    <Text style={styles.folderTrashText}>🗑</Text>
+                  </Pressable>
+                </View>
               )
             })}
 
@@ -187,16 +208,23 @@ function makeStyles(theme: Theme) {
     folderRow: {
       flexDirection: 'row',
       alignItems: 'center',
-      justifyContent: 'space-between',
-      padding: 14,
       borderRadius: 10,
       borderWidth: 1,
       borderColor: theme.border,
       backgroundColor: theme.cardBg,
       marginBottom: 10
     },
+    folderRowMain: {
+      flex: 1,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      padding: 14
+    },
     folderRowText: { fontSize: 15.5, fontWeight: '600', color: theme.text },
     folderRowCount: { fontSize: 13, color: theme.textMuted },
+    folderTrashButton: { paddingHorizontal: 14, paddingVertical: 14 },
+    folderTrashText: { fontSize: 16 },
     newFolderPrompt: { paddingVertical: 10, marginBottom: 10 },
     newFolderPromptText: { color: theme.accent, fontSize: 14, fontWeight: '600' },
     newFolderRow: { flexDirection: 'row', gap: 8, marginBottom: 12 },

@@ -1,15 +1,17 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useFocusEffect } from 'expo-router'
-import { loadFolders, loadAssignments, type DeckFolder } from './deckFolders'
+import { loadFolders, loadAssignments, loadTrashedFolders, type DeckFolder } from './deckFolders'
 
 export function useDeckFolders() {
   const [folders, setFolders] = useState<DeckFolder[]>([])
   const [assignments, setAssignments] = useState<Record<string, string>>({})
+  const [trashedCount, setTrashedCount] = useState(0)
 
   const reload = useCallback(async () => {
-    const [f, a] = await Promise.all([loadFolders(), loadAssignments()])
+    const [f, a, t] = await Promise.all([loadFolders(), loadAssignments(), loadTrashedFolders()])
     setFolders(f)
     setAssignments(a)
+    setTrashedCount(t.length)
   }, [])
 
   useEffect(() => {
@@ -22,5 +24,5 @@ export function useDeckFolders() {
     }, [reload])
   )
 
-  return { folders, assignments, reload }
+  return { folders, assignments, trashedCount, reload }
 }
