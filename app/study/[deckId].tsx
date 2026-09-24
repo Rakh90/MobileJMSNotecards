@@ -129,16 +129,21 @@ export default function StudyScreen() {
   const back = (current.properties.back as string) || '(empty)'
 
   return (
-    <View style={styles.container}>
+    // Flipping used to require tapping the card itself, forcing a thumb-stretch up the screen
+    // on top of reaching the buttons below - the whole screen now flips (while the back is
+    // hidden), so any tap gets you there. Grading still needs its own two distinct buttons
+    // once flipped, so this only fires while !showBack; the grade buttons below claim their
+    // own touches as nested Pressables regardless.
+    <Pressable style={styles.container} onPress={() => !showBack && setShowBack(true)}>
       <Text style={styles.progress}>{queue.length} left</Text>
       <ScrollView contentContainerStyle={styles.cardScroll}>
         <View style={styles.cardStack}>
           <View style={styles.cardShadowLayer2} />
           <View style={styles.cardShadowLayer1} />
-          <Pressable style={styles.card} onPress={() => setShowBack((v) => !v)}>
+          <View style={styles.card}>
             <Text style={styles.cardText}>{showBack ? back : front}</Text>
-            {!showBack && <Text style={styles.tapHint}>Tap to reveal the other side</Text>}
-          </Pressable>
+            {!showBack && <Text style={styles.tapHint}>Tap anywhere to reveal the other side</Text>}
+          </View>
         </View>
       </ScrollView>
       {showBack ? (
@@ -155,7 +160,7 @@ export default function StudyScreen() {
           <Text style={styles.buttonText}>Show answer</Text>
         </Pressable>
       )}
-    </View>
+    </Pressable>
   )
 }
 
