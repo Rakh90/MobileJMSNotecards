@@ -1,12 +1,17 @@
 import { useEffect, useState } from 'react'
 import { View, Text, Pressable, StyleSheet, ActivityIndicator, ScrollView } from 'react-native'
 import { useLocalSearchParams, useNavigation, router } from 'expo-router'
+import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { readDeckFile, writeDeckFile } from '../../lib/workspace'
 import { readSampleDeck, writeSampleDeck, resetSampleDeck, SAMPLE_DECK_URI } from '../../lib/sampleDeck'
 import { SRS_DUE_KEY, SRS_INTERVAL_KEY, SRS_EASE_KEY, DEFAULT_SRS, isCardDue, nextSrsState } from '../../lib/srs'
+import { useTheme, type Theme } from '../../lib/theme'
 import type { DatabaseFile, DatabaseRow } from '../../lib/types'
 
 export default function StudyScreen() {
+  const theme = useTheme()
+  const styles = makeStyles(theme)
+  const insets = useSafeAreaInsets()
   const { deckId } = useLocalSearchParams<{ deckId: string }>()
   const uri = decodeURIComponent(deckId ?? '')
   const isSample = uri === SAMPLE_DECK_URI
@@ -93,14 +98,14 @@ export default function StudyScreen() {
   if (!db) {
     return (
       <View style={styles.center}>
-        <ActivityIndicator />
+        <ActivityIndicator color={theme.accent} />
       </View>
     )
   }
 
   if (queue.length === 0) {
     return (
-      <View style={styles.center}>
+      <View style={[styles.center, { paddingBottom: 24 + insets.bottom }]}>
         <Text style={styles.title}>{gradedCount > 0 ? 'All done for now 🎉' : 'Nothing due right now'}</Text>
         <Text style={styles.subtitle}>
           {gradedCount > 0
@@ -127,14 +132,17 @@ export default function StudyScreen() {
     <View style={styles.container}>
       <Text style={styles.progress}>{queue.length} left</Text>
       <ScrollView contentContainerStyle={styles.cardScroll}>
-        <Pressable style={styles.card} onPress={() => setShowBack((v) => !v)}>
-          <Text style={styles.cardLabel}>{showBack ? 'SIDE B' : 'SIDE A'}</Text>
-          <Text style={styles.cardText}>{showBack ? back : front}</Text>
-          {!showBack && <Text style={styles.tapHint}>Tap to reveal the other side</Text>}
-        </Pressable>
+        <View style={styles.cardStack}>
+          <View style={styles.cardShadowLayer2} />
+          <View style={styles.cardShadowLayer1} />
+          <Pressable style={styles.card} onPress={() => setShowBack((v) => !v)}>
+            <Text style={styles.cardText}>{showBack ? back : front}</Text>
+            {!showBack && <Text style={styles.tapHint}>Tap to reveal the other side</Text>}
+          </Pressable>
+        </View>
       </ScrollView>
       {showBack ? (
-        <View style={styles.gradeRow}>
+        <View style={[styles.gradeRow, { marginBottom: insets.bottom }]}>
           <Pressable style={[styles.gradeButton, styles.gradeBad]} onPress={() => grade(false)}>
             <Text style={styles.gradeButtonText}>Still learning</Text>
           </Pressable>
@@ -143,7 +151,7 @@ export default function StudyScreen() {
           </Pressable>
         </View>
       ) : (
-        <Pressable style={styles.button} onPress={() => setShowBack(true)}>
+        <Pressable style={[styles.button, { marginBottom: insets.bottom }]} onPress={() => setShowBack(true)}>
           <Text style={styles.buttonText}>Show answer</Text>
         </Pressable>
       )}
@@ -151,32 +159,60 @@ export default function StudyScreen() {
   )
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#fff', padding: 16 },
-  center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24, gap: 12 },
-  progress: { textAlign: 'center', color: '#888', fontSize: 13, marginBottom: 8 },
-  cardScroll: { flexGrow: 1, justifyContent: 'center' },
-  card: {
-    borderWidth: 1,
-    borderColor: '#e3e2e0',
-    borderRadius: 14,
-    padding: 24,
-    minHeight: 220,
-    justifyContent: 'center',
-    alignItems: 'center'
-  },
-  cardLabel: { fontSize: 11, fontWeight: '700', color: '#5b4cf0', marginBottom: 10 },
-  cardText: { fontSize: 20, textAlign: 'center' },
-  tapHint: { fontSize: 12, color: '#999', marginTop: 16 },
-  title: { fontSize: 20, fontWeight: '700', textAlign: 'center' },
-  subtitle: { fontSize: 14, color: '#666', textAlign: 'center' },
-  button: { backgroundColor: '#5b4cf0', paddingVertical: 14, borderRadius: 10, marginTop: 16, alignItems: 'center' },
-  buttonText: { color: '#fff', fontWeight: '600', fontSize: 15 },
-  gradeRow: { flexDirection: 'row', gap: 10, marginTop: 16 },
-  gradeButton: { flex: 1, paddingVertical: 14, borderRadius: 10, alignItems: 'center' },
-  gradeBad: { backgroundColor: '#d1453b' },
-  gradeGood: { backgroundColor: '#2b8a3e' },
-  gradeButtonText: { color: '#fff', fontWeight: '600', fontSize: 15 },
-  linkButton: { padding: 12, marginTop: 4 },
-  linkButtonText: { color: '#5b4cf0', fontSize: 13.5 }
-})
+function makeStyles(theme: Theme) {
+  return StyleSheet.create({
+    container: { flex: 1, backgroundColor: theme.bg, padding: 16 },
+    center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24, gap: 12 },
+    progress: { textAlign: 'center', color: theme.textMuted, fontSize: 13, marginBottom: 8 },
+    cardScroll: { flexGrow: 1, justifyContent: 'center' },
+    cardStack: { position: 'relative' },
+    cardShadowLayer1: {
+      position: 'absolute',
+      top: 8,
+      left: 8,
+      right: -8,
+      bottom: -8,
+      borderRadius: 16,
+      backgroundColor: theme.border,
+      opacity: 0.6
+    },
+    cardShadowLayer2: {
+      position: 'absolute',
+      top: 16,
+      left: 16,
+      right: -16,
+      bottom: -16,
+      borderRadius: 16,
+      backgroundColor: theme.border,
+      opacity: 0.3
+    },
+    card: {
+      backgroundColor: theme.cardBg,
+      borderWidth: 1,
+      borderColor: theme.border,
+      borderRadius: 16,
+      padding: 28,
+      minHeight: 220,
+      justifyContent: 'center',
+      alignItems: 'center',
+      elevation: 6,
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 3 },
+      shadowOpacity: theme.dark ? 0.4 : 0.12,
+      shadowRadius: 10
+    },
+    cardText: { fontSize: 21, textAlign: 'center', color: theme.text, fontWeight: '500' },
+    tapHint: { fontSize: 12, color: theme.textMuted, marginTop: 18 },
+    title: { fontSize: 20, fontWeight: '700', textAlign: 'center', color: theme.text },
+    subtitle: { fontSize: 14, color: theme.textMuted, textAlign: 'center' },
+    button: { backgroundColor: theme.accent, paddingVertical: 14, borderRadius: 10, marginTop: 16, alignItems: 'center' },
+    buttonText: { color: theme.accentContrast, fontWeight: '600', fontSize: 15 },
+    gradeRow: { flexDirection: 'row', gap: 10, marginTop: 16 },
+    gradeButton: { flex: 1, paddingVertical: 14, borderRadius: 10, alignItems: 'center' },
+    gradeBad: { backgroundColor: theme.danger },
+    gradeGood: { backgroundColor: theme.success },
+    gradeButtonText: { color: '#fff', fontWeight: '600', fontSize: 15 },
+    linkButton: { padding: 12, marginTop: 4 },
+    linkButtonText: { color: theme.accent, fontSize: 13.5 }
+  })
+}

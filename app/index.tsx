@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { View, Text, FlatList, Pressable, StyleSheet, RefreshControl, ActivityIndicator } from 'react-native'
 import { router, useFocusEffect } from 'expo-router'
+import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import {
   loadWorkspaceUri,
   pickWorkspaceFolder,
@@ -10,9 +11,13 @@ import {
 } from '../lib/workspace'
 import { readSampleDeck, SAMPLE_DECK_URI } from '../lib/sampleDeck'
 import { SRS_DUE_KEY, isCardDue } from '../lib/srs'
+import { useTheme, type Theme } from '../lib/theme'
 import type { DatabaseFile } from '../lib/types'
 
 export default function DeckListScreen() {
+  const theme = useTheme()
+  const styles = makeStyles(theme)
+  const insets = useSafeAreaInsets()
   const [workspaceUri, setWorkspaceUri] = useState<string | null>(null)
   const [decks, setDecks] = useState<DeckEntry[]>([])
   const [sampleDeck, setSampleDeck] = useState<DatabaseFile | null>(null)
@@ -39,7 +44,7 @@ export default function DeckListScreen() {
     })
   }, [refresh])
 
-  // Study screen writes progress straight back to the same file (or, for the sample deck, to
+  // Study/Quiz write progress straight back to the same file (or, for the sample deck, to
   // AsyncStorage), so re-scan whenever this screen regains focus to pick up fresh due-counts.
   useFocusEffect(
     useCallback(() => {
@@ -65,6 +70,28 @@ export default function DeckListScreen() {
     return rows.filter((r) => isCardDue(r.properties[SRS_DUE_KEY])).length
   }
 
+  function DeckRow({ uri, file }: { uri: string; file: DatabaseFile }) {
+    const due = dueCount(file.rows)
+    return (
+      <View style={styles.deckRow}>
+        <Pressable style={{ flex: 1 }} onPress={() => router.push(`/study/${encodeURIComponent(uri)}`)}>
+          <Text style={styles.deckTitle}>{file.title}</Text>
+          <Text style={styles.deckMeta}>
+            {file.rows.length} card{file.rows.length === 1 ? '' : 's'}
+          </Text>
+        </Pressable>
+        {due > 0 && (
+          <View style={styles.dueBadge}>
+            <Text style={styles.dueBadgeText}>{due} due</Text>
+          </View>
+        )}
+        <Pressable style={styles.quizButton} onPress={() => router.push(`/quiz/${encodeURIComponent(uri)}`)}>
+          <Text style={styles.quizButtonText}>Quiz</Text>
+        </Pressable>
+      </View>
+    )
+  }
+
   return (
     <View style={styles.container}>
       <FlatList
@@ -74,22 +101,7 @@ export default function DeckListScreen() {
         contentContainerStyle={styles.list}
         ListHeaderComponent={
           <View style={{ gap: 10, marginBottom: 10 }}>
-            {sampleDeck && (
-              <Pressable
-                style={[styles.deckRow, styles.sampleRow]}
-                onPress={() => router.push(`/study/${encodeURIComponent(SAMPLE_DECK_URI)}`)}
-              >
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.deckTitle}>🧪 {sampleDeck.title}</Text>
-                  <Text style={styles.deckMeta}>Built in — for trying the app out, not your real notes</Text>
-                </View>
-                {dueCount(sampleDeck.rows) > 0 && (
-                  <View style={styles.dueBadge}>
-                    <Text style={styles.dueBadgeText}>{dueCount(sampleDeck.rows)} due</Text>
-                  </View>
-                )}
-              </Pressable>
-            )}
+            {sampleDeck && <DeckRow uri={SAMPLE_DECK_URI} file={sampleDeck} />}
             {!workspaceUri && (
               <View style={styles.folderPrompt}>
                 <Text style={styles.subtitle}>
@@ -111,34 +123,14 @@ export default function DeckListScreen() {
         ListFooterComponent={
           loading && decks.length === 0 && !sampleDeck ? (
             <View style={styles.center}>
-              <ActivityIndicator />
+              <ActivityIndicator color={theme.accent} />
             </View>
           ) : null
         }
-        renderItem={({ item }) => {
-          const due = dueCount(item.file.rows)
-          return (
-            <Pressable
-              style={styles.deckRow}
-              onPress={() => router.push(`/study/${encodeURIComponent(item.uri)}`)}
-            >
-              <View style={{ flex: 1 }}>
-                <Text style={styles.deckTitle}>{item.file.title}</Text>
-                <Text style={styles.deckMeta}>
-                  {item.file.rows.length} card{item.file.rows.length === 1 ? '' : 's'}
-                </Text>
-              </View>
-              {due > 0 && (
-                <View style={styles.dueBadge}>
-                  <Text style={styles.dueBadgeText}>{due} due</Text>
-                </View>
-              )}
-            </Pressable>
-          )
-        }}
+        renderItem={({ item }) => <DeckRow uri={item.uri} file={item.file} />}
       />
       {workspaceUri && (
-        <Pressable style={styles.linkButton} onPress={changeFolder}>
+        <Pressable style={[styles.linkButton, { paddingBottom: 14 + insets.bottom }]} onPress={changeFolder}>
           <Text style={styles.linkButtonText}>Change folder</Text>
         </Pressable>
       )}
@@ -146,28 +138,33 @@ export default function DeckListScreen() {
   )
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#fff' },
-  center: { alignItems: 'center', justifyContent: 'center', padding: 24 },
-  subtitle: { fontSize: 14, color: '#666', textAlign: 'center', marginBottom: 10 },
-  button: { backgroundColor: '#5b4cf0', paddingVertical: 12, paddingHorizontal: 24, borderRadius: 8, alignSelf: 'center' },
-  buttonText: { color: '#fff', fontWeight: '600', fontSize: 15 },
-  list: { padding: 16 },
-  folderPrompt: { padding: 14, borderRadius: 10, borderWidth: 1, borderColor: '#e3e2e0', borderStyle: 'dashed' },
-  deckRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 14,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: '#e3e2e0',
-    marginBottom: 10
-  },
-  sampleRow: { borderColor: '#5b4cf0', borderStyle: 'dashed' },
-  deckTitle: { fontSize: 16, fontWeight: '600' },
-  deckMeta: { fontSize: 13, color: '#888', marginTop: 2 },
-  dueBadge: { backgroundColor: '#e4e2ff', paddingVertical: 4, paddingHorizontal: 10, borderRadius: 999 },
-  dueBadgeText: { color: '#5b4cf0', fontWeight: '600', fontSize: 12.5 },
-  linkButton: { padding: 14, alignItems: 'center' },
-  linkButtonText: { color: '#5b4cf0', fontSize: 13.5 }
-})
+function makeStyles(theme: Theme) {
+  return StyleSheet.create({
+    container: { flex: 1, backgroundColor: theme.bg },
+    center: { alignItems: 'center', justifyContent: 'center', padding: 24 },
+    subtitle: { fontSize: 14, color: theme.textMuted, textAlign: 'center', marginBottom: 10 },
+    button: { backgroundColor: theme.accent, paddingVertical: 12, paddingHorizontal: 24, borderRadius: 8, alignSelf: 'center' },
+    buttonText: { color: theme.accentContrast, fontWeight: '600', fontSize: 15 },
+    list: { padding: 16 },
+    folderPrompt: { padding: 14, borderRadius: 10, borderWidth: 1, borderColor: theme.border, borderStyle: 'dashed' },
+    deckRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      padding: 14,
+      borderRadius: 10,
+      borderWidth: 1,
+      borderColor: theme.border,
+      backgroundColor: theme.cardBg,
+      marginBottom: 10,
+      gap: 8
+    },
+    deckTitle: { fontSize: 16, fontWeight: '600', color: theme.text },
+    deckMeta: { fontSize: 13, color: theme.textMuted, marginTop: 2 },
+    dueBadge: { backgroundColor: theme.bgActive, paddingVertical: 4, paddingHorizontal: 10, borderRadius: 999 },
+    dueBadgeText: { color: theme.accent, fontWeight: '600', fontSize: 12.5 },
+    quizButton: { borderWidth: 1, borderColor: theme.accent, paddingVertical: 6, paddingHorizontal: 12, borderRadius: 8 },
+    quizButtonText: { color: theme.accent, fontWeight: '600', fontSize: 13 },
+    linkButton: { padding: 14, alignItems: 'center' },
+    linkButtonText: { color: theme.accent, fontSize: 13.5 }
+  })
+}
