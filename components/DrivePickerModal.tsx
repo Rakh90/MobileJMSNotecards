@@ -140,6 +140,13 @@ export default function DrivePickerModal({
           // detect and use to silently refuse to render account-related content (this is the
           // documented "disallowed_useragent" behavior) - a normal Chrome-mobile UA avoids it.
           userAgent="Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Mobile Safari/537.36"
+          // Picker's fuller "Select a file" browsing view opens via window.open(). This library
+          // now defaults setSupportMultipleWindows to true, which requires the app to handle
+          // window creation itself (onOpenWindow) - without that, Android was falling back to
+          // launching the popup in the real external Chrome app, which has no bridge back to
+          // our page's pickerCallback, so a selection there could never reach us. Forcing this
+          // false makes that navigation replace content inside this same WebView instead.
+          setSupportMultipleWindows={false}
           source={{ html: buildHtml(accessToken), baseUrl: 'https://apis.google.com/' }}
           onMessage={handleMessage}
           onError={handleWebViewError}
