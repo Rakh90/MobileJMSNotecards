@@ -4,7 +4,16 @@ import { useLocalSearchParams, useNavigation, router } from 'expo-router'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { readDeckFile, writeDeckFile } from '../../lib/workspace'
 import { readSampleDeck, writeSampleDeck, resetSampleDeck, SAMPLE_DECK_URI } from '../../lib/sampleDeck'
-import { SRS_DUE_KEY, SRS_INTERVAL_KEY, SRS_EASE_KEY, DEFAULT_SRS, isCardDue, nextSrsState } from '../../lib/srs'
+import {
+  SRS_DUE_KEY,
+  SRS_INTERVAL_KEY,
+  SRS_EASE_KEY,
+  SRS_CORRECT_KEY,
+  SRS_INCORRECT_KEY,
+  DEFAULT_SRS,
+  isCardDue,
+  nextSrsState
+} from '../../lib/srs'
 import { useTheme, type Theme } from '../../lib/theme'
 import type { DatabaseFile, DatabaseRow } from '../../lib/types'
 
@@ -66,7 +75,9 @@ export default function StudyScreen() {
                 ...r.properties,
                 [SRS_INTERVAL_KEY]: next.interval,
                 [SRS_EASE_KEY]: next.ease,
-                [SRS_DUE_KEY]: next.dueDate
+                [SRS_DUE_KEY]: next.dueDate,
+                [SRS_CORRECT_KEY]: (Number(r.properties[SRS_CORRECT_KEY]) || 0) + (gotIt ? 1 : 0),
+                [SRS_INCORRECT_KEY]: (Number(r.properties[SRS_INCORRECT_KEY]) || 0) + (gotIt ? 0 : 1)
               }
             }
           : r

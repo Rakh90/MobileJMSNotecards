@@ -1,62 +1,29 @@
-import { useCallback, useEffect, useState } from 'react'
-import { View, Text, FlatList, Pressable, StyleSheet, RefreshControl, ActivityIndicator } from 'react-native'
-import { router, useFocusEffect } from 'expo-router'
+import { useMemo, useState } from 'react'
+import { View, Text, ScrollView, Pressable, TextInput, StyleSheet, RefreshControl, ActivityIndicator } from 'react-native'
+import { router } from 'expo-router'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
-import {
-  loadWorkspaceUri,
-  saveWorkspaceUri,
-  pickWorkspaceFolder,
-  clearWorkspaceUri,
-  listFlashcardDecks,
-  DRIVE_PREFIX,
-  type DeckEntry
-} from '../lib/workspace'
+import { saveWorkspaceUri, pickWorkspaceFolder, clearWorkspaceUri, DRIVE_PREFIX } from '../lib/workspace'
 import { signInToDrive } from '../lib/googleDrive'
 import { findFolderByName } from '../lib/driveApi'
-import { readSampleDeck, SAMPLE_DECK_URI } from '../lib/sampleDeck'
-import { SRS_DUE_KEY, isCardDue } from '../lib/srs'
+import { SAMPLE_DECK_URI } from '../lib/sampleDeck'
+import { useDecks } from '../lib/useDecks'
+import { useDeckFolders } from '../lib/useDeckFolders'
+import { createFolder, setDeckFolder } from '../lib/deckFolders'
+import DeckRow from '../components/DeckRow'
+import MoveToFolderModal from '../components/MoveToFolderModal'
 import { useTheme, type Theme } from '../lib/theme'
-import type { DatabaseFile } from '../lib/types'
 
 export default function DeckListScreen() {
   const theme = useTheme()
   const styles = makeStyles(theme)
   const insets = useSafeAreaInsets()
-  const [workspaceUri, setWorkspaceUri] = useState<string | null>(null)
-  const [decks, setDecks] = useState<DeckEntry[]>([])
-  const [sampleDeck, setSampleDeck] = useState<DatabaseFile | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+  const { workspaceUri, setWorkspaceUri, decks, sampleDeck, loading, error, setError, refresh } = useDecks()
+  const { folders, assignments, reload: reloadFolders } = useDeckFolders()
   const [driveConnecting, setDriveConnecting] = useState(false)
-
-  const refresh = useCallback(async (uri: string | null) => {
-    setLoading(true)
-    setError(null)
-    try {
-      if (uri) setDecks(await listFlashcardDecks(uri))
-      setSampleDeck(await readSampleDeck())
-    } catch (err) {
-      const detail = err instanceof Error ? err.message : String(err)
-      setError(`Could not read that folder (${detail}). It may have moved or lost permission — try choosing it again.`)
-    } finally {
-      setLoading(false)
-    }
-  }, [])
-
-  useEffect(() => {
-    loadWorkspaceUri().then((uri) => {
-      setWorkspaceUri(uri)
-      refresh(uri)
-    })
-  }, [refresh])
-
-  // Study/Quiz write progress straight back to the same file (or, for the sample deck, to
-  // AsyncStorage), so re-scan whenever this screen regains focus to pick up fresh due-counts.
-  useFocusEffect(
-    useCallback(() => {
-      refresh(workspaceUri)
-    }, [workspaceUri, refresh])
-  )
+  const [search, setSearch] = useState('')
+  const [creatingFolder, setCreatingFolder] = useState(false)
+  const [newFolderName, setNewFolderName] = useState('')
+  const [moveTarget, setMoveTarget] = useState<{ uri: string; title: string } | null>(null)
 
   async function chooseFolder(): Promise<void> {
     const uri = await pickWorkspaceFolder()
@@ -96,45 +63,84 @@ export default function DeckListScreen() {
   async function changeFolder(): Promise<void> {
     await clearWorkspaceUri()
     setWorkspaceUri(null)
-    setDecks([])
   }
 
-  function dueCount(rows: DatabaseFile['rows']): number {
-    return rows.filter((r) => isCardDue(r.properties[SRS_DUE_KEY])).length
+  async function submitNewFolder(): Promise<void> {
+    const name = newFolderName.trim()
+    setCreatingFolder(false)
+    setNewFolderName('')
+    if (!name) return
+    await createFolder(name)
+    reloadFolders()
   }
 
-  function DeckRow({ uri, file }: { uri: string; file: DatabaseFile }) {
-    const due = dueCount(file.rows)
-    return (
-      <View style={styles.deckRow}>
-        <Pressable style={{ flex: 1 }} onPress={() => router.push(`/study/${encodeURIComponent(uri)}`)}>
-          <Text style={styles.deckTitle}>{file.title}</Text>
-          <Text style={styles.deckMeta}>
-            {file.rows.length} card{file.rows.length === 1 ? '' : 's'}
-          </Text>
-        </Pressable>
-        {due > 0 && (
-          <View style={styles.dueBadge}>
-            <Text style={styles.dueBadgeText}>{due} due</Text>
-          </View>
-        )}
-        <Pressable style={styles.quizButton} onPress={() => router.push(`/quiz/${encodeURIComponent(uri)}`)}>
-          <Text style={styles.quizButtonText}>Quiz</Text>
-        </Pressable>
-      </View>
+  async function assignMoveTarget(folderId: string | null): Promise<void> {
+    if (!moveTarget) return
+    await setDeckFolder(moveTarget.uri, folderId)
+    setMoveTarget(null)
+    reloadFolders()
+  }
+
+  async function createAndAssign(name: string): Promise<void> {
+    if (!moveTarget) return
+    const folder = await createFolder(name)
+    await setDeckFolder(moveTarget.uri, folder.id)
+    setMoveTarget(null)
+    reloadFolders()
+  }
+
+  const trimmedQuery = search.trim().toLowerCase()
+  const searchResults = useMemo(() => {
+    if (!trimmedQuery) return []
+    const results: { uri: string; file: typeof decks[number]['file'] }[] = decks.filter((d) =>
+      d.file.title.toLowerCase().includes(trimmedQuery)
     )
-  }
+    if (sampleDeck && sampleDeck.title.toLowerCase().includes(trimmedQuery)) {
+      results.unshift({ uri: SAMPLE_DECK_URI, file: sampleDeck })
+    }
+    return results
+  }, [decks, sampleDeck, trimmedQuery])
+
+  const ungroupedDecks = decks.filter((d) => !assignments[d.uri])
+  const showSearchBar = decks.length > 0 || !!sampleDeck
 
   return (
     <View style={styles.container}>
-      <FlatList
-        data={decks}
-        keyExtractor={(d) => d.uri}
-        refreshControl={<RefreshControl refreshing={loading} onRefresh={() => refresh(workspaceUri)} />}
+      <ScrollView
         contentContainerStyle={styles.list}
-        ListHeaderComponent={
-          <View style={{ gap: 10, marginBottom: 10 }}>
-            {sampleDeck && <DeckRow uri={SAMPLE_DECK_URI} file={sampleDeck} />}
+        refreshControl={<RefreshControl refreshing={loading} onRefresh={() => refresh(workspaceUri)} />}
+      >
+        {showSearchBar && (
+          <TextInput
+            style={styles.searchInput}
+            value={search}
+            onChangeText={setSearch}
+            placeholder="Search decks…"
+            placeholderTextColor={theme.textMuted}
+            autoCapitalize="none"
+            autoCorrect={false}
+          />
+        )}
+
+        {trimmedQuery ? (
+          <>
+            {searchResults.map((d) => (
+              <DeckRow
+                key={d.uri}
+                uri={d.uri}
+                file={d.file}
+                theme={theme}
+                onMove={d.uri === SAMPLE_DECK_URI ? undefined : (uri, title) => setMoveTarget({ uri, title })}
+              />
+            ))}
+            {searchResults.length === 0 && (
+              <Text style={styles.subtitle}>No decks match "{search.trim()}".</Text>
+            )}
+          </>
+        ) : (
+          <>
+            {sampleDeck && <DeckRow uri={SAMPLE_DECK_URI} file={sampleDeck} theme={theme} />}
+
             {!workspaceUri && (
               <View style={styles.folderPrompt}>
                 <Text style={styles.subtitle}>
@@ -156,27 +162,85 @@ export default function DeckListScreen() {
                 {error && <Text style={[styles.subtitle, { marginTop: 10, marginBottom: 0 }]}>{error}</Text>}
               </View>
             )}
-            {workspaceUri && decks.length === 0 && !loading && (
-              <Text style={styles.subtitle}>
-                {error ?? 'No flashcard decks found in that folder yet.'}
-              </Text>
+
+            {workspaceUri && (
+              <>
+                {folders.map((f) => {
+                  const count = decks.filter((d) => assignments[d.uri] === f.id).length
+                  return (
+                    <Pressable
+                      key={f.id}
+                      style={styles.folderRow}
+                      onPress={() => router.push(`/folder/${f.id}?name=${encodeURIComponent(f.name)}`)}
+                    >
+                      <Text style={styles.folderRowText}>📁 {f.name}</Text>
+                      <Text style={styles.folderRowCount}>
+                        {count} deck{count === 1 ? '' : 's'} ›
+                      </Text>
+                    </Pressable>
+                  )
+                })}
+
+                {creatingFolder ? (
+                  <View style={styles.newFolderRow}>
+                    <TextInput
+                      style={styles.newFolderInput}
+                      value={newFolderName}
+                      onChangeText={setNewFolderName}
+                      placeholder="Folder name…"
+                      placeholderTextColor={theme.textMuted}
+                      autoFocus
+                      onSubmitEditing={submitNewFolder}
+                      returnKeyType="done"
+                    />
+                    <Pressable style={styles.newFolderCreate} onPress={submitNewFolder}>
+                      <Text style={styles.newFolderCreateText}>Add</Text>
+                    </Pressable>
+                  </View>
+                ) : (
+                  <Pressable style={styles.newFolderPrompt} onPress={() => setCreatingFolder(true)}>
+                    <Text style={styles.newFolderPromptText}>+ New folder</Text>
+                  </Pressable>
+                )}
+
+                {ungroupedDecks.map((d) => (
+                  <DeckRow
+                    key={d.uri}
+                    uri={d.uri}
+                    file={d.file}
+                    theme={theme}
+                    onMove={(uri, title) => setMoveTarget({ uri, title })}
+                  />
+                ))}
+
+                {decks.length === 0 && !loading && (
+                  <Text style={styles.subtitle}>{error ?? 'No flashcard decks found in that folder yet.'}</Text>
+                )}
+              </>
             )}
+          </>
+        )}
+
+        {loading && decks.length === 0 && !sampleDeck && (
+          <View style={styles.center}>
+            <ActivityIndicator color={theme.accent} />
           </View>
-        }
-        ListFooterComponent={
-          loading && decks.length === 0 && !sampleDeck ? (
-            <View style={styles.center}>
-              <ActivityIndicator color={theme.accent} />
-            </View>
-          ) : null
-        }
-        renderItem={({ item }) => <DeckRow uri={item.uri} file={item.file} />}
-      />
+        )}
+      </ScrollView>
       {workspaceUri && (
         <Pressable style={[styles.linkButton, { paddingBottom: 14 + insets.bottom }]} onPress={changeFolder}>
           <Text style={styles.linkButtonText}>Change folder</Text>
         </Pressable>
       )}
+      <MoveToFolderModal
+        deckTitle={moveTarget?.title ?? null}
+        folders={folders}
+        currentFolderId={moveTarget ? assignments[moveTarget.uri] ?? null : null}
+        theme={theme}
+        onAssign={assignMoveTarget}
+        onCreateAndAssign={createAndAssign}
+        onClose={() => setMoveTarget(null)}
+      />
     </View>
   )
 }
@@ -186,29 +250,59 @@ function makeStyles(theme: Theme) {
     container: { flex: 1, backgroundColor: theme.bg },
     center: { alignItems: 'center', justifyContent: 'center', padding: 24 },
     subtitle: { fontSize: 14, color: theme.textMuted, textAlign: 'center', marginBottom: 10 },
-    button: { backgroundColor: theme.accent, paddingVertical: 12, paddingHorizontal: 24, borderRadius: 8, alignSelf: 'center', marginTop: 8 },
+    button: {
+      backgroundColor: theme.accent,
+      paddingVertical: 12,
+      paddingHorizontal: 24,
+      borderRadius: 8,
+      alignSelf: 'center',
+      marginTop: 8
+    },
     buttonSecondary: { backgroundColor: 'transparent', borderWidth: 1, borderColor: theme.accent },
     buttonText: { color: theme.accentContrast, fontWeight: '600', fontSize: 15 },
     buttonTextSecondary: { color: theme.accent },
     list: { padding: 16 },
+    searchInput: {
+      borderWidth: 1,
+      borderColor: theme.border,
+      backgroundColor: theme.cardBg,
+      borderRadius: 10,
+      paddingHorizontal: 14,
+      paddingVertical: 10,
+      fontSize: 15,
+      color: theme.text,
+      marginBottom: 12
+    },
     folderPrompt: { padding: 14, borderRadius: 10, borderWidth: 1, borderColor: theme.border, borderStyle: 'dashed' },
-    deckRow: {
+    folderRow: {
       flexDirection: 'row',
       alignItems: 'center',
+      justifyContent: 'space-between',
       padding: 14,
       borderRadius: 10,
       borderWidth: 1,
       borderColor: theme.border,
       backgroundColor: theme.cardBg,
-      marginBottom: 10,
-      gap: 8
+      marginBottom: 10
     },
-    deckTitle: { fontSize: 16, fontWeight: '600', color: theme.text },
-    deckMeta: { fontSize: 13, color: theme.textMuted, marginTop: 2 },
-    dueBadge: { backgroundColor: theme.bgActive, paddingVertical: 4, paddingHorizontal: 10, borderRadius: 999 },
-    dueBadgeText: { color: theme.accent, fontWeight: '600', fontSize: 12.5 },
-    quizButton: { borderWidth: 1, borderColor: theme.accent, paddingVertical: 6, paddingHorizontal: 12, borderRadius: 8 },
-    quizButtonText: { color: theme.accent, fontWeight: '600', fontSize: 13 },
+    folderRowText: { fontSize: 15.5, fontWeight: '600', color: theme.text },
+    folderRowCount: { fontSize: 13, color: theme.textMuted },
+    newFolderPrompt: { paddingVertical: 10, marginBottom: 10 },
+    newFolderPromptText: { color: theme.accent, fontSize: 14, fontWeight: '600' },
+    newFolderRow: { flexDirection: 'row', gap: 8, marginBottom: 12 },
+    newFolderInput: {
+      flex: 1,
+      borderWidth: 1,
+      borderColor: theme.border,
+      backgroundColor: theme.cardBg,
+      borderRadius: 8,
+      paddingHorizontal: 12,
+      paddingVertical: 8,
+      fontSize: 14,
+      color: theme.text
+    },
+    newFolderCreate: { backgroundColor: theme.accent, borderRadius: 8, paddingHorizontal: 14, justifyContent: 'center' },
+    newFolderCreateText: { color: theme.accentContrast, fontWeight: '600', fontSize: 13.5 },
     linkButton: { padding: 14, alignItems: 'center' },
     linkButtonText: { color: theme.accent, fontSize: 13.5 }
   })

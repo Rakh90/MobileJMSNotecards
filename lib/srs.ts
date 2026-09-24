@@ -6,6 +6,8 @@
 export const SRS_INTERVAL_KEY = '__srsInterval'
 export const SRS_EASE_KEY = '__srsEase'
 export const SRS_DUE_KEY = '__srsDue'
+export const SRS_CORRECT_KEY = '__srsCorrect'
+export const SRS_INCORRECT_KEY = '__srsIncorrect'
 
 export interface SrsState {
   interval: number
