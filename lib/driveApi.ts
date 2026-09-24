@@ -24,6 +24,17 @@ async function findChildByName(parentId: string, name: string, mimeType?: string
   return data.files[0]?.id ?? null
 }
 
+// With full drive scope there's no need for the user to pick anything through a UI - the app can
+// just search their whole Drive by name, the same way the desktop app's detectGoogleDriveRoot()
+// finds things by a known path. Only top-level folders (not inside another folder) are matched,
+// since that's where the desktop app creates the flashcards workspace.
+export async function findFolderByName(name: string): Promise<string | null> {
+  const q = `mimeType = '${FOLDER_MIME}' and name = '${name}' and trashed = false and 'root' in parents`
+  const res = await authedFetch(`${API}/files?q=${encodeURIComponent(q)}&fields=files(id,name)`)
+  const data = (await res.json()) as { files: { id: string; name: string }[] }
+  return data.files[0]?.id ?? null
+}
+
 export interface DriveDeckEntry {
   fileId: string
   file: DatabaseFile

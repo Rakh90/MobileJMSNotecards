@@ -11,8 +11,8 @@ import {
   DRIVE_PREFIX,
   type DeckEntry
 } from '../lib/workspace'
-import { signInToDrive, getDriveAccessToken } from '../lib/googleDrive'
-import DrivePickerModal from '../components/DrivePickerModal'
+import { signInToDrive } from '../lib/googleDrive'
+import { findFolderByName } from '../lib/driveApi'
 import { readSampleDeck, SAMPLE_DECK_URI } from '../lib/sampleDeck'
 import { SRS_DUE_KEY, isCardDue } from '../lib/srs'
 import { useTheme, type Theme } from '../lib/theme'
@@ -27,7 +27,6 @@ export default function DeckListScreen() {
   const [sampleDeck, setSampleDeck] = useState<DatabaseFile | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [driveAccessToken, setDriveAccessToken] = useState<string | null>(null)
   const [driveConnecting, setDriveConnecting] = useState(false)
 
   const refresh = useCallback(async (uri: string | null) => {
@@ -67,29 +66,31 @@ export default function DeckListScreen() {
     }
   }
 
-  // Opens the native Google account/consent UI, then hands the resulting access token to
-  // DrivePickerModal so the user can browse and select their Drive folder. The folder id
-  // itself only becomes the active workspace once they actually pick something (see
-  // handleDrivePick) — cancelling just closes the modal with no state change.
+  // Signs in, then finds the "JMSNote Flashcards" folder by name directly via the Drive API -
+  // the same name the desktop app's "Create Flashcards workspace in Google Drive" button uses.
+  // No in-app folder picker needed: full Drive scope means the app can search for it itself,
+  // the same way the desktop app locates the Drive mount by a known path.
   async function connectDrive(): Promise<void> {
     setDriveConnecting(true)
+    setError(null)
     try {
       await signInToDrive()
-      const token = await getDriveAccessToken()
-      setDriveAccessToken(token)
+      const folderId = await findFolderByName('JMSNote Flashcards')
+      if (!folderId) {
+        setError(
+          'Could not find a "JMSNote Flashcards" folder in your Google Drive. Make sure it has finished syncing from your PC, then try again.'
+        )
+        return
+      }
+      const uri = DRIVE_PREFIX + folderId
+      saveWorkspaceUri(uri)
+      setWorkspaceUri(uri)
+      refresh(uri)
     } catch {
-      setError('Could not sign in to Google Drive. Try again.')
+      setError('Could not connect to Google Drive. Try again.')
     } finally {
       setDriveConnecting(false)
     }
-  }
-
-  function handleDrivePick(folder: { id: string; name: string }): void {
-    setDriveAccessToken(null)
-    const uri = DRIVE_PREFIX + folder.id
-    saveWorkspaceUri(uri)
-    setWorkspaceUri(uri)
-    refresh(uri)
   }
 
   async function changeFolder(): Promise<void> {
@@ -152,6 +153,7 @@ export default function DeckListScreen() {
                     {driveConnecting ? 'Connecting…' : 'Connect Google Drive'}
                   </Text>
                 </Pressable>
+                {error && <Text style={[styles.subtitle, { marginTop: 10, marginBottom: 0 }]}>{error}</Text>}
               </View>
             )}
             {workspaceUri && decks.length === 0 && !loading && (
@@ -175,11 +177,6 @@ export default function DeckListScreen() {
           <Text style={styles.linkButtonText}>Change folder</Text>
         </Pressable>
       )}
-      <DrivePickerModal
-        accessToken={driveAccessToken}
-        onPick={handleDrivePick}
-        onCancel={() => setDriveAccessToken(null)}
-      />
     </View>
   )
 }

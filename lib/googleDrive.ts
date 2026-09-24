@@ -1,12 +1,19 @@
 import { GoogleSignin } from '@react-native-google-signin/google-signin'
 
-const DRIVE_FILE_SCOPE = 'https://www.googleapis.com/auth/drive.file'
+// drive.file only grants access to files the app individually creates or opens via Picker - it
+// does NOT recurse into a picked folder's existing contents, which made it useless for "auto
+// -discover whatever decks are in this folder" (confirmed after decks synced from the desktop
+// app came back invisible to the API despite the folder itself being accessible). Full drive
+// scope is the only way to search/read/write a folder's contents by name without re-picking
+// every file by hand - the tradeoff is Google forcing re-login roughly every 7 days while this
+// app stays unverified (Testing mode), which is acceptable for a personal-use app.
+const DRIVE_SCOPE = 'https://www.googleapis.com/auth/drive'
 
 let configured = false
 
 function ensureConfigured(): void {
   if (configured) return
-  GoogleSignin.configure({ scopes: [DRIVE_FILE_SCOPE] })
+  GoogleSignin.configure({ scopes: [DRIVE_SCOPE] })
   configured = true
 }
 

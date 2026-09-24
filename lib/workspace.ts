@@ -6,11 +6,11 @@ import { listDriveDecks, readDriveFile, writeDriveFile } from './driveApi'
 const { StorageAccessFramework } = FileSystem
 const STORAGE_KEY = 'jmsnote.workspaceUri'
 
-// A workspace picked via Google's Drive Picker (see components/DrivePickerModal.tsx) is stored
+// A workspace connected via Google Drive (see lib/googleDrive.ts, lib/driveApi.ts) is stored
 // with this prefix instead of a real content:// SAF uri, since Expo's SAF module hard-rejects
-// any provider other than Android's built-in local-storage one (see lib/driveApi.ts). Every
-// function below branches on this prefix so callers (app/index.tsx, study/quiz screens) never
-// need to know which backend a given deck actually lives in.
+// any provider other than Android's built-in local-storage one. Every function below branches
+// on this prefix so callers (app/index.tsx, study/quiz screens) never need to know which
+// backend a given deck actually lives in.
 export const DRIVE_PREFIX = 'gdrive://'
 
 // SAF's readDirectoryAsync only ever returns raw content:// URIs, no name/type metadata — the
