@@ -52,6 +52,10 @@ function buildHtml(accessToken: string): string {
         .build()
       window.ReactNativeWebView.postMessage(JSON.stringify({ ready: true }))
       picker.setVisible(true)
+      setTimeout(function () {
+        var dialogs = document.querySelectorAll('.picker-dialog, iframe')
+        report('log', 'dialog check: ' + dialogs.length + ' picker element(s) in DOM')
+      }, 2000)
     } catch (e) {
       report('error', 'building picker threw: ' + (e && e.message ? e.message : e))
     }
@@ -121,19 +125,21 @@ export default function DrivePickerModal({
             <Text style={styles.cancelText}>Cancel</Text>
           </Pressable>
         </View>
-        {!ready && (
-          <View style={styles.statusBar}>
-            <ActivityIndicator size="small" />
-            <Text style={styles.statusText} numberOfLines={3}>
-              {loadError ?? status}
-            </Text>
-          </View>
-        )}
+        <View style={styles.statusBar}>
+          {!ready && !loadError && <ActivityIndicator size="small" />}
+          <Text style={styles.statusText} numberOfLines={3}>
+            {loadError ?? status}
+          </Text>
+        </View>
         <WebView
           originWhitelist={['*']}
           javaScriptEnabled
           domStorageEnabled
           mixedContentMode="always"
+          // Android WebView's default user-agent string contains "; wv", which Google's servers
+          // detect and use to silently refuse to render account-related content (this is the
+          // documented "disallowed_useragent" behavior) - a normal Chrome-mobile UA avoids it.
+          userAgent="Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Mobile Safari/537.36"
           source={{ html: buildHtml(accessToken), baseUrl: 'https://apis.google.com/' }}
           onMessage={handleMessage}
           onError={handleWebViewError}
