@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Modal, View, Text, Pressable, StyleSheet, ActivityIndicator } from 'react-native'
 import { WebView, type WebViewMessageEvent } from 'react-native-webview'
 import type { WebViewErrorEvent } from 'react-native-webview/lib/WebViewTypes'
+import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
 // Restricted (Cloud Console -> Credentials) to Google Drive API + Google Picker API only.
 const API_KEY = 'AIzaSyDq1XWB7E9mBbt0AHDUBPo0pBmhjEDNhZ8'
@@ -27,10 +28,11 @@ function buildHtml(accessToken: string): string {
   var origLog = console.log, origError = console.error
   console.log = function () { report('log', Array.prototype.join.call(arguments, ' ')); origLog.apply(console, arguments) }
   console.error = function () { report('error', Array.prototype.join.call(arguments, ' ')); origError.apply(console, arguments) }
-  report('log', 'page loaded, waiting for apis.google.com/js/api.js')
-</script>
-<script src="https://apis.google.com/js/api.js" onload="onApiLoad()" onerror="report('error', 'failed to load apis.google.com/js/api.js')"></script>
-<script>
+
+  // Must be defined before the api.js <script> tag below - a plain (non-async) <script src>
+  // fires its "load" event, which calls onApiLoad(), before the parser reaches any script
+  // block that comes after it in the document, so defining onApiLoad afterwards left it
+  // undefined at the moment it was actually needed.
   function onApiLoad() {
     report('log', 'api.js loaded, loading picker library')
     gapi.load('picker', { callback: createPicker, onerror: function (e) { report('error', 'gapi.load picker failed: ' + JSON.stringify(e)) } })
@@ -62,7 +64,10 @@ function buildHtml(accessToken: string): string {
       window.ReactNativeWebView.postMessage(JSON.stringify({ cancelled: true }))
     }
   }
+
+  report('log', 'page loaded, waiting for apis.google.com/js/api.js')
 </script>
+<script src="https://apis.google.com/js/api.js" onload="onApiLoad()" onerror="report('error', 'failed to load apis.google.com/js/api.js')"></script>
 </body>
 </html>`
 }
@@ -79,6 +84,7 @@ export default function DrivePickerModal({
   const [status, setStatus] = useState('Loading Google Picker…')
   const [ready, setReady] = useState(false)
   const [loadError, setLoadError] = useState<string | null>(null)
+  const insets = useSafeAreaInsets()
 
   if (!accessToken) return null
 
@@ -108,7 +114,7 @@ export default function DrivePickerModal({
 
   return (
     <Modal visible animationType="slide" onRequestClose={onCancel}>
-      <View style={styles.container}>
+      <View style={[styles.container, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
         <View style={styles.header}>
           <Text style={styles.headerText}>Select your Drive folder</Text>
           <Pressable onPress={onCancel} hitSlop={12}>
