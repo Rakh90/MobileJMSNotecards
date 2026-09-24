@@ -1,9 +1,9 @@
-import { useEffect, useState } from 'react'
-import { View, Text, ScrollView, TextInput, StyleSheet, RefreshControl } from 'react-native'
-import { useLocalSearchParams, useNavigation } from 'expo-router'
+import { useEffect, useMemo, useState } from 'react'
+import { View, Text, ScrollView, Pressable, TextInput, StyleSheet, RefreshControl } from 'react-native'
+import { useLocalSearchParams, useNavigation, router } from 'expo-router'
 import { useDecks } from '../../lib/useDecks'
 import { useDeckFolders } from '../../lib/useDeckFolders'
-import { setDeckFolder, createFolder } from '../../lib/deckFolders'
+import { setDeckFolder, createFolder, descendantFolderIds } from '../../lib/deckFolders'
 import DeckRow from '../../components/DeckRow'
 import MoveToFolderModal from '../../components/MoveToFolderModal'
 import { useTheme, type Theme } from '../../lib/theme'
@@ -16,6 +16,8 @@ export default function FolderScreen() {
   const { workspaceUri, decks, loading, refresh } = useDecks()
   const { folders, assignments, reload: reloadFolders } = useDeckFolders()
   const [search, setSearch] = useState('')
+  const [creatingFolder, setCreatingFolder] = useState(false)
+  const [newFolderName, setNewFolderName] = useState('')
   const [moveTarget, setMoveTarget] = useState<{ uri: string; title: string } | null>(null)
 
   const folderName = folders.find((f) => f.id === folderId)?.name ?? name ?? 'Folder'
@@ -24,9 +26,27 @@ export default function FolderScreen() {
     navigation.setOptions({ title: folderName })
   }, [folderName, navigation])
 
-  const deckList = decks.filter((d) => assignments[d.uri] === folderId)
+  const subfolders = folders.filter((f) => f.parentId === folderId)
+  const ownDecks = decks.filter((d) => assignments[d.uri] === folderId)
+
   const trimmed = search.trim().toLowerCase()
-  const filtered = trimmed ? deckList.filter((d) => d.file.title.toLowerCase().includes(trimmed)) : deckList
+  // Search reaches into every nested subfolder, not just decks directly in this one.
+  const searchResults = useMemo(() => {
+    if (!trimmed) return []
+    const idsInTree = new Set([folderId, ...descendantFolderIds(folders, folderId)])
+    return decks.filter(
+      (d) => assignments[d.uri] && idsInTree.has(assignments[d.uri]) && d.file.title.toLowerCase().includes(trimmed)
+    )
+  }, [decks, assignments, folders, folderId, trimmed])
+
+  async function submitNewFolder(): Promise<void> {
+    const trimmedName = newFolderName.trim()
+    setCreatingFolder(false)
+    setNewFolderName('')
+    if (!trimmedName) return
+    await createFolder(trimmedName, folderId)
+    reloadFolders()
+  }
 
   async function assignMoveTarget(newFolderId: string | null): Promise<void> {
     if (!moveTarget) return
@@ -43,13 +63,15 @@ export default function FolderScreen() {
     reloadFolders()
   }
 
+  const hasAnything = subfolders.length > 0 || ownDecks.length > 0
+
   return (
     <View style={styles.container}>
       <ScrollView
         contentContainerStyle={styles.list}
         refreshControl={<RefreshControl refreshing={loading} onRefresh={() => refresh(workspaceUri)} />}
       >
-        {deckList.length > 0 && (
+        {hasAnything && (
           <TextInput
             style={styles.searchInput}
             value={search}
@@ -60,20 +82,77 @@ export default function FolderScreen() {
             autoCorrect={false}
           />
         )}
-        {filtered.map((d) => (
-          <DeckRow
-            key={d.uri}
-            uri={d.uri}
-            file={d.file}
-            theme={theme}
-            onMove={(uri, title) => setMoveTarget({ uri, title })}
-          />
-        ))}
-        {deckList.length === 0 && !loading && (
-          <Text style={styles.subtitle}>No decks in this folder yet — move one here from the main screen.</Text>
-        )}
-        {filtered.length === 0 && deckList.length > 0 && (
-          <Text style={styles.subtitle}>No decks match "{search.trim()}".</Text>
+
+        {trimmed ? (
+          <>
+            {searchResults.map((d) => (
+              <DeckRow
+                key={d.uri}
+                uri={d.uri}
+                file={d.file}
+                theme={theme}
+                onMove={(uri, title) => setMoveTarget({ uri, title })}
+              />
+            ))}
+            {searchResults.length === 0 && <Text style={styles.subtitle}>No decks match "{search.trim()}".</Text>}
+          </>
+        ) : (
+          <>
+            {subfolders.map((f) => {
+              const idsInTree = new Set([f.id, ...descendantFolderIds(folders, f.id)])
+              const count = decks.filter((d) => assignments[d.uri] && idsInTree.has(assignments[d.uri])).length
+              return (
+                <Pressable
+                  key={f.id}
+                  style={styles.folderRow}
+                  onPress={() => router.push(`/folder/${f.id}?name=${encodeURIComponent(f.name)}`)}
+                >
+                  <Text style={styles.folderRowText}>📁 {f.name}</Text>
+                  <Text style={styles.folderRowCount}>
+                    {count} deck{count === 1 ? '' : 's'} ›
+                  </Text>
+                </Pressable>
+              )
+            })}
+
+            {creatingFolder ? (
+              <View style={styles.newFolderRow}>
+                <TextInput
+                  style={styles.newFolderInput}
+                  value={newFolderName}
+                  onChangeText={setNewFolderName}
+                  placeholder="Subfolder name…"
+                  placeholderTextColor={theme.textMuted}
+                  autoFocus
+                  onSubmitEditing={submitNewFolder}
+                  returnKeyType="done"
+                />
+                <Pressable style={styles.newFolderCreate} onPress={submitNewFolder}>
+                  <Text style={styles.newFolderCreateText}>Add</Text>
+                </Pressable>
+              </View>
+            ) : (
+              <Pressable style={styles.newFolderPrompt} onPress={() => setCreatingFolder(true)}>
+                <Text style={styles.newFolderPromptText}>+ New subfolder</Text>
+              </Pressable>
+            )}
+
+            {ownDecks.map((d) => (
+              <DeckRow
+                key={d.uri}
+                uri={d.uri}
+                file={d.file}
+                theme={theme}
+                onMove={(uri, title) => setMoveTarget({ uri, title })}
+              />
+            ))}
+
+            {!hasAnything && !loading && (
+              <Text style={styles.subtitle}>
+                Nothing here yet — move a deck into this folder from the main screen, or add a subfolder.
+              </Text>
+            )}
+          </>
         )}
       </ScrollView>
       <MoveToFolderModal
@@ -104,6 +183,35 @@ function makeStyles(theme: Theme) {
       fontSize: 15,
       color: theme.text,
       marginBottom: 12
-    }
+    },
+    folderRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      padding: 14,
+      borderRadius: 10,
+      borderWidth: 1,
+      borderColor: theme.border,
+      backgroundColor: theme.cardBg,
+      marginBottom: 10
+    },
+    folderRowText: { fontSize: 15.5, fontWeight: '600', color: theme.text },
+    folderRowCount: { fontSize: 13, color: theme.textMuted },
+    newFolderPrompt: { paddingVertical: 10, marginBottom: 10 },
+    newFolderPromptText: { color: theme.accent, fontSize: 14, fontWeight: '600' },
+    newFolderRow: { flexDirection: 'row', gap: 8, marginBottom: 12 },
+    newFolderInput: {
+      flex: 1,
+      borderWidth: 1,
+      borderColor: theme.border,
+      backgroundColor: theme.cardBg,
+      borderRadius: 8,
+      paddingHorizontal: 12,
+      paddingVertical: 8,
+      fontSize: 14,
+      color: theme.text
+    },
+    newFolderCreate: { backgroundColor: theme.accent, borderRadius: 8, paddingHorizontal: 14, justifyContent: 'center' },
+    newFolderCreateText: { color: theme.accentContrast, fontWeight: '600', fontSize: 13.5 }
   })
 }

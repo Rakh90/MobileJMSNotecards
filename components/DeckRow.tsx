@@ -8,6 +8,20 @@ function dueCount(rows: DatabaseFile['rows']): number {
   return rows.filter((r) => isCardDue(r.properties[SRS_DUE_KEY])).length
 }
 
+// "Learned" = not currently due, i.e. it's been graded correct at least once and is scheduled
+// for a future review rather than sitting in the immediate queue.
+function learnedProgress(rows: DatabaseFile['rows']): { learned: number; total: number; pct: number } {
+  const total = rows.length
+  const learned = total - dueCount(rows)
+  return { learned, total, pct: total === 0 ? 0 : (learned / total) * 100 }
+}
+
+function progressColor(pct: number, theme: Theme): string {
+  if (pct >= 100) return theme.success
+  if (pct > 69) return theme.warning
+  return theme.danger
+}
+
 function score(rows: DatabaseFile['rows']): { correct: number; incorrect: number } {
   let correct = 0
   let incorrect = 0
@@ -31,7 +45,7 @@ export default function DeckRow({
   onMove?: (uri: string, title: string) => void
 }) {
   const styles = makeStyles(theme)
-  const due = dueCount(file.rows)
+  const { learned, total, pct } = learnedProgress(file.rows)
   const { correct, incorrect } = score(file.rows)
 
   return (
@@ -50,9 +64,11 @@ export default function DeckRow({
           )}
         </View>
       </Pressable>
-      {due > 0 && (
+      {total > 0 && (
         <View style={styles.dueBadge}>
-          <Text style={styles.dueBadgeText}>{due} due</Text>
+          <Text style={[styles.dueBadgeText, { color: progressColor(pct, theme) }]}>
+            {learned}/{total}
+          </Text>
         </View>
       )}
       <Pressable style={styles.quizButton} onPress={() => router.push(`/quiz/${encodeURIComponent(uri)}`)}>
@@ -84,7 +100,7 @@ function makeStyles(theme: Theme) {
     deckMeta: { fontSize: 13, color: theme.textMuted },
     scoreText: { fontSize: 12.5, fontWeight: '600' },
     dueBadge: { backgroundColor: theme.bgActive, paddingVertical: 4, paddingHorizontal: 10, borderRadius: 999 },
-    dueBadgeText: { color: theme.accent, fontWeight: '600', fontSize: 12.5 },
+    dueBadgeText: { fontWeight: '700', fontSize: 12.5 },
     quizButton: { borderWidth: 1, borderColor: theme.accent, paddingVertical: 6, paddingHorizontal: 12, borderRadius: 8 },
     quizButtonText: { color: theme.accent, fontWeight: '600', fontSize: 13 },
     moveButton: { padding: 4 },

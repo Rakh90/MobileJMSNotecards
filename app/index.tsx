@@ -8,7 +8,7 @@ import { findFolderByName } from '../lib/driveApi'
 import { SAMPLE_DECK_URI } from '../lib/sampleDeck'
 import { useDecks } from '../lib/useDecks'
 import { useDeckFolders } from '../lib/useDeckFolders'
-import { createFolder, setDeckFolder } from '../lib/deckFolders'
+import { createFolder, setDeckFolder, descendantFolderIds } from '../lib/deckFolders'
 import DeckRow from '../components/DeckRow'
 import MoveToFolderModal from '../components/MoveToFolderModal'
 import { useTheme, type Theme } from '../lib/theme'
@@ -165,21 +165,27 @@ export default function DeckListScreen() {
 
             {workspaceUri && (
               <>
-                {folders.map((f) => {
-                  const count = decks.filter((d) => assignments[d.uri] === f.id).length
-                  return (
-                    <Pressable
-                      key={f.id}
-                      style={styles.folderRow}
-                      onPress={() => router.push(`/folder/${f.id}?name=${encodeURIComponent(f.name)}`)}
-                    >
-                      <Text style={styles.folderRowText}>📁 {f.name}</Text>
-                      <Text style={styles.folderRowCount}>
-                        {count} deck{count === 1 ? '' : 's'} ›
-                      </Text>
-                    </Pressable>
-                  )
-                })}
+                {folders
+                  .filter((f) => f.parentId === null)
+                  .map((f) => {
+                    // Counts every deck anywhere in this folder's subtree, not just ones
+                    // assigned directly to it, since decks typically end up in the deepest
+                    // (leaf) subfolder rather than the top-level container.
+                    const idsInTree = new Set([f.id, ...descendantFolderIds(folders, f.id)])
+                    const count = decks.filter((d) => assignments[d.uri] && idsInTree.has(assignments[d.uri])).length
+                    return (
+                      <Pressable
+                        key={f.id}
+                        style={styles.folderRow}
+                        onPress={() => router.push(`/folder/${f.id}?name=${encodeURIComponent(f.name)}`)}
+                      >
+                        <Text style={styles.folderRowText}>📁 {f.name}</Text>
+                        <Text style={styles.folderRowCount}>
+                          {count} deck{count === 1 ? '' : 's'} ›
+                        </Text>
+                      </Pressable>
+                    )
+                  })}
 
                 {creatingFolder ? (
                   <View style={styles.newFolderRow}>

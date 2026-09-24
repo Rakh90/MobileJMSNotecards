@@ -3,10 +3,12 @@ import AsyncStorage from '@react-native-async-storage/async-storage'
 // Purely a phone-side organizational layer - it never touches the actual deck files or their
 // location (local folder or Drive), just groups deck URIs into named buckets for the dashboard.
 // A deck is looked up by its `uri` (the same value used as its list key elsewhere), which is
-// stable for as long as the underlying file exists.
+// stable for as long as the underlying file exists. Folders can nest via parentId (null = a
+// top-level folder), to arbitrary depth.
 export interface DeckFolder {
   id: string
   name: string
+  parentId: string | null
 }
 
 const FOLDERS_KEY = 'jmsnote.deckFolders'
@@ -14,31 +16,52 @@ const ASSIGNMENTS_KEY = 'jmsnote.deckFolderAssignments'
 
 export async function loadFolders(): Promise<DeckFolder[]> {
   const raw = await AsyncStorage.getItem(FOLDERS_KEY)
-  return raw ? JSON.parse(raw) : []
+  if (!raw) return []
+  const parsed = JSON.parse(raw) as Partial<DeckFolder>[]
+  // Defensive: drop anything that ended up with no real name (e.g. from an earlier bug, or a
+  // race where a create was interrupted) rather than rendering a blank, unselectable row.
+  return parsed
+    .filter((f): f is DeckFolder => typeof f.id === 'string' && typeof f.name === 'string' && f.name.trim() !== '')
+    .map((f) => ({ id: f.id, name: f.name, parentId: f.parentId ?? null }))
 }
 
 async function saveFolders(folders: DeckFolder[]): Promise<void> {
   await AsyncStorage.setItem(FOLDERS_KEY, JSON.stringify(folders))
 }
 
-export async function createFolder(name: string): Promise<DeckFolder> {
+export async function createFolder(name: string, parentId: string | null = null): Promise<DeckFolder> {
+  const trimmed = name.trim()
   const folders = await loadFolders()
-  const folder: DeckFolder = { id: `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`, name }
+  const folder: DeckFolder = {
+    id: `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`,
+    name: trimmed,
+    parentId
+  }
   await saveFolders([...folders, folder])
   return folder
 }
 
 export async function renameFolder(id: string, name: string): Promise<void> {
   const folders = await loadFolders()
-  await saveFolders(folders.map((f) => (f.id === id ? { ...f, name } : f)))
+  await saveFolders(folders.map((f) => (f.id === id ? { ...f, name: name.trim() } : f)))
 }
 
+// All folder ids nested (at any depth) inside rootId - used both to cascade-delete a subtree
+// and to let a folder's deck count / search include decks that live in its subfolders.
+export function descendantFolderIds(folders: DeckFolder[], rootId: string): string[] {
+  const children = folders.filter((f) => f.parentId === rootId).map((f) => f.id)
+  return children.concat(...children.map((id) => descendantFolderIds(folders, id)))
+}
+
+// Deleting a folder that still has subfolders removes the whole subtree, and unassigns any
+// decks that were anywhere inside it (they fall back to "no folder" rather than vanishing).
 export async function deleteFolder(id: string): Promise<void> {
   const folders = await loadFolders()
-  await saveFolders(folders.filter((f) => f.id !== id))
+  const toRemove = new Set([id, ...descendantFolderIds(folders, id)])
+  await saveFolders(folders.filter((f) => !toRemove.has(f.id)))
   const assignments = await loadAssignments()
   const next = { ...assignments }
-  for (const key of Object.keys(next)) if (next[key] === id) delete next[key]
+  for (const key of Object.keys(next)) if (toRemove.has(next[key])) delete next[key]
   await saveAssignments(next)
 }
 

@@ -14,6 +14,7 @@ export interface Theme {
   accent: string
   accentContrast: string
   success: string
+  warning: string
   danger: string
   cardBg: string
 }
@@ -30,6 +31,7 @@ const light: Theme = {
   accent: '#5b4cf0',
   accentContrast: '#ffffff',
   success: '#2b8a3e',
+  warning: '#b8860b',
   danger: '#d1453b',
   cardBg: '#ffffff'
 }
@@ -46,6 +48,7 @@ const dark: Theme = {
   accent: '#8b7cff',
   accentContrast: '#14141a',
   success: '#3ba354',
+  warning: '#e0b02e',
   danger: '#e0564c',
   cardBg: '#26272b'
 }
