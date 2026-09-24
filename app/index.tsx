@@ -1,6 +1,6 @@
-import { useMemo, useState } from 'react'
-import { View, Text, ScrollView, Pressable, TextInput, StyleSheet, RefreshControl, ActivityIndicator } from 'react-native'
-import { router } from 'expo-router'
+import { useEffect, useMemo, useState } from 'react'
+import { View, Text, ScrollView, Pressable, TextInput, StyleSheet, RefreshControl, ActivityIndicator, Alert } from 'react-native'
+import { router, useNavigation } from 'expo-router'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { saveWorkspaceUri, pickWorkspaceFolder, clearWorkspaceUri, DRIVE_PREFIX } from '../lib/workspace'
 import { signInToDrive } from '../lib/googleDrive'
@@ -8,6 +8,7 @@ import { findFolderByName } from '../lib/driveApi'
 import { SAMPLE_DECK_URI } from '../lib/sampleDeck'
 import { useDecks } from '../lib/useDecks'
 import { useDeckFolders } from '../lib/useDeckFolders'
+import { useQuizScores } from '../lib/useQuizScores'
 import { createFolder, setDeckFolder, trashFolder, descendantFolderIds } from '../lib/deckFolders'
 import DeckRow from '../components/DeckRow'
 import MoveToFolderModal from '../components/MoveToFolderModal'
@@ -17,13 +18,27 @@ export default function DeckListScreen() {
   const theme = useTheme()
   const styles = makeStyles(theme)
   const insets = useSafeAreaInsets()
+  const navigation = useNavigation()
   const { workspaceUri, setWorkspaceUri, decks, sampleDeck, loading, error, setError, refresh } = useDecks()
   const { folders, assignments, trashedCount, reload: reloadFolders } = useDeckFolders()
+  const { scores: quizScores } = useQuizScores()
   const [driveConnecting, setDriveConnecting] = useState(false)
   const [search, setSearch] = useState('')
   const [creatingFolder, setCreatingFolder] = useState(false)
   const [newFolderName, setNewFolderName] = useState('')
   const [moveTarget, setMoveTarget] = useState<{ uri: string; title: string } | null>(null)
+
+  useEffect(() => {
+    navigation.setOptions({
+      headerRight: workspaceUri
+        ? () => (
+            <Pressable onPress={() => setCreatingFolder(true)} hitSlop={10}>
+              <Text style={{ fontSize: 22, color: theme.accent }}>+</Text>
+            </Pressable>
+          )
+        : undefined
+    })
+  }, [navigation, theme.accent, workspaceUri])
 
   async function chooseFolder(): Promise<void> {
     const uri = await pickWorkspaceFolder()
@@ -65,9 +80,18 @@ export default function DeckListScreen() {
     setWorkspaceUri(null)
   }
 
-  async function removeFolder(id: string): Promise<void> {
-    await trashFolder(id)
-    reloadFolders()
+  function openFolderMenu(f: { id: string; name: string }): void {
+    Alert.alert(f.name, undefined, [
+      {
+        text: 'Delete folder',
+        style: 'destructive',
+        onPress: async () => {
+          await trashFolder(f.id)
+          reloadFolders()
+        }
+      },
+      { text: 'Cancel', style: 'cancel' }
+    ])
   }
 
   async function submitNewFolder(): Promise<void> {
@@ -135,6 +159,7 @@ export default function DeckListScreen() {
                 uri={d.uri}
                 file={d.file}
                 theme={theme}
+                quizScore={quizScores[d.uri]}
                 onMove={d.uri === SAMPLE_DECK_URI ? undefined : (uri, title) => setMoveTarget({ uri, title })}
               />
             ))}
@@ -144,7 +169,9 @@ export default function DeckListScreen() {
           </>
         ) : (
           <>
-            {sampleDeck && <DeckRow uri={SAMPLE_DECK_URI} file={sampleDeck} theme={theme} />}
+            {sampleDeck && (
+              <DeckRow uri={SAMPLE_DECK_URI} file={sampleDeck} theme={theme} quizScore={quizScores[SAMPLE_DECK_URI]} />
+            )}
 
             {!workspaceUri && (
               <View style={styles.folderPrompt}>
@@ -179,24 +206,21 @@ export default function DeckListScreen() {
                     const idsInTree = new Set([f.id, ...descendantFolderIds(folders, f.id)])
                     const count = decks.filter((d) => assignments[d.uri] && idsInTree.has(assignments[d.uri])).length
                     return (
-                      <View key={f.id} style={styles.folderRow}>
-                        <Pressable
-                          style={styles.folderRowMain}
-                          onPress={() => router.push(`/folder/${f.id}?name=${encodeURIComponent(f.name)}`)}
-                        >
-                          <Text style={styles.folderRowText}>📁 {f.name}</Text>
-                          <Text style={styles.folderRowCount}>
-                            {count} deck{count === 1 ? '' : 's'} ›
-                          </Text>
-                        </Pressable>
-                        <Pressable style={styles.folderTrashButton} onPress={() => removeFolder(f.id)} hitSlop={8}>
-                          <Text style={styles.folderTrashText}>🗑</Text>
-                        </Pressable>
-                      </View>
+                      <Pressable
+                        key={f.id}
+                        style={styles.folderRow}
+                        onPress={() => router.push(`/folder/${f.id}?name=${encodeURIComponent(f.name)}`)}
+                        onLongPress={() => openFolderMenu(f)}
+                      >
+                        <Text style={styles.folderRowText}>📁 {f.name}</Text>
+                        <Text style={styles.folderRowCount}>
+                          {count} deck{count === 1 ? '' : 's'} ›
+                        </Text>
+                      </Pressable>
                     )
                   })}
 
-                {creatingFolder ? (
+                {creatingFolder && (
                   <View style={styles.newFolderRow}>
                     <TextInput
                       style={styles.newFolderInput}
@@ -212,10 +236,6 @@ export default function DeckListScreen() {
                       <Text style={styles.newFolderCreateText}>Add</Text>
                     </Pressable>
                   </View>
-                ) : (
-                  <Pressable style={styles.newFolderPrompt} onPress={() => setCreatingFolder(true)}>
-                    <Text style={styles.newFolderPromptText}>+ New folder</Text>
-                  </Pressable>
                 )}
 
                 {ungroupedDecks.map((d) => (
@@ -224,6 +244,7 @@ export default function DeckListScreen() {
                     uri={d.uri}
                     file={d.file}
                     theme={theme}
+                    quizScore={quizScores[d.uri]}
                     onMove={(uri, title) => setMoveTarget({ uri, title })}
                   />
                 ))}
@@ -299,25 +320,16 @@ function makeStyles(theme: Theme) {
     folderRow: {
       flexDirection: 'row',
       alignItems: 'center',
+      justifyContent: 'space-between',
+      padding: 14,
       borderRadius: 10,
       borderWidth: 1,
       borderColor: theme.border,
       backgroundColor: theme.cardBg,
       marginBottom: 10
     },
-    folderRowMain: {
-      flex: 1,
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'space-between',
-      padding: 14
-    },
     folderRowText: { fontSize: 15.5, fontWeight: '600', color: theme.text },
     folderRowCount: { fontSize: 13, color: theme.textMuted },
-    folderTrashButton: { paddingHorizontal: 14, paddingVertical: 14 },
-    folderTrashText: { fontSize: 16 },
-    newFolderPrompt: { paddingVertical: 10, marginBottom: 10 },
-    newFolderPromptText: { color: theme.accent, fontSize: 14, fontWeight: '600' },
     newFolderRow: { flexDirection: 'row', gap: 8, marginBottom: 12 },
     newFolderInput: {
       flex: 1,

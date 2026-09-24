@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from 'react'
-import { View, Text, ScrollView, Pressable, TextInput, StyleSheet, RefreshControl } from 'react-native'
+import { View, Text, ScrollView, Pressable, TextInput, StyleSheet, RefreshControl, Alert } from 'react-native'
 import { useLocalSearchParams, useNavigation, router } from 'expo-router'
 import { useDecks } from '../../lib/useDecks'
 import { useDeckFolders } from '../../lib/useDeckFolders'
+import { useQuizScores } from '../../lib/useQuizScores'
 import { setDeckFolder, createFolder, trashFolder, descendantFolderIds } from '../../lib/deckFolders'
 import DeckRow from '../../components/DeckRow'
 import MoveToFolderModal from '../../components/MoveToFolderModal'
@@ -15,6 +16,7 @@ export default function FolderScreen() {
   const navigation = useNavigation()
   const { workspaceUri, decks, loading, refresh } = useDecks()
   const { folders, assignments, reload: reloadFolders } = useDeckFolders()
+  const { scores: quizScores } = useQuizScores()
   const [search, setSearch] = useState('')
   const [creatingFolder, setCreatingFolder] = useState(false)
   const [newFolderName, setNewFolderName] = useState('')
@@ -31,13 +33,32 @@ export default function FolderScreen() {
     navigation.setOptions({
       title: folderName,
       headerRight: () => (
-        <Pressable onPress={deleteThisFolder} hitSlop={10}>
-          <Text style={{ fontSize: 17 }}>🗑</Text>
-        </Pressable>
+        <View style={{ flexDirection: 'row', gap: 18 }}>
+          <Pressable onPress={() => setCreatingFolder(true)} hitSlop={10}>
+            <Text style={{ fontSize: 22, color: theme.accent }}>+</Text>
+          </Pressable>
+          <Pressable onPress={deleteThisFolder} hitSlop={10}>
+            <Text style={{ fontSize: 17 }}>🗑</Text>
+          </Pressable>
+        </View>
       )
     })
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [folderName, navigation, folderId])
+  }, [folderName, navigation, folderId, theme.accent])
+
+  function openFolderMenu(f: { id: string; name: string }): void {
+    Alert.alert(f.name, undefined, [
+      {
+        text: 'Delete folder',
+        style: 'destructive',
+        onPress: async () => {
+          await trashFolder(f.id)
+          reloadFolders()
+        }
+      },
+      { text: 'Cancel', style: 'cancel' }
+    ])
+  }
 
   const subfolders = folders.filter((f) => f.parentId === folderId)
   const ownDecks = decks.filter((d) => assignments[d.uri] === folderId)
@@ -104,6 +125,7 @@ export default function FolderScreen() {
                 uri={d.uri}
                 file={d.file}
                 theme={theme}
+                quizScore={quizScores[d.uri]}
                 onMove={(uri, title) => setMoveTarget({ uri, title })}
               />
             ))}
@@ -115,28 +137,21 @@ export default function FolderScreen() {
               const idsInTree = new Set([f.id, ...descendantFolderIds(folders, f.id)])
               const count = decks.filter((d) => assignments[d.uri] && idsInTree.has(assignments[d.uri])).length
               return (
-                <View key={f.id} style={styles.folderRow}>
-                  <Pressable
-                    style={styles.folderRowMain}
-                    onPress={() => router.push(`/folder/${f.id}?name=${encodeURIComponent(f.name)}`)}
-                  >
-                    <Text style={styles.folderRowText}>📁 {f.name}</Text>
-                    <Text style={styles.folderRowCount}>
-                      {count} deck{count === 1 ? '' : 's'} ›
-                    </Text>
-                  </Pressable>
-                  <Pressable
-                    style={styles.folderTrashButton}
-                    onPress={() => trashFolder(f.id).then(reloadFolders)}
-                    hitSlop={8}
-                  >
-                    <Text style={styles.folderTrashText}>🗑</Text>
-                  </Pressable>
-                </View>
+                <Pressable
+                  key={f.id}
+                  style={styles.folderRow}
+                  onPress={() => router.push(`/folder/${f.id}?name=${encodeURIComponent(f.name)}`)}
+                  onLongPress={() => openFolderMenu(f)}
+                >
+                  <Text style={styles.folderRowText}>📁 {f.name}</Text>
+                  <Text style={styles.folderRowCount}>
+                    {count} deck{count === 1 ? '' : 's'} ›
+                  </Text>
+                </Pressable>
               )
             })}
 
-            {creatingFolder ? (
+            {creatingFolder && (
               <View style={styles.newFolderRow}>
                 <TextInput
                   style={styles.newFolderInput}
@@ -152,10 +167,6 @@ export default function FolderScreen() {
                   <Text style={styles.newFolderCreateText}>Add</Text>
                 </Pressable>
               </View>
-            ) : (
-              <Pressable style={styles.newFolderPrompt} onPress={() => setCreatingFolder(true)}>
-                <Text style={styles.newFolderPromptText}>+ New subfolder</Text>
-              </Pressable>
             )}
 
             {ownDecks.map((d) => (
@@ -164,6 +175,7 @@ export default function FolderScreen() {
                 uri={d.uri}
                 file={d.file}
                 theme={theme}
+                quizScore={quizScores[d.uri]}
                 onMove={(uri, title) => setMoveTarget({ uri, title })}
               />
             ))}
@@ -208,25 +220,16 @@ function makeStyles(theme: Theme) {
     folderRow: {
       flexDirection: 'row',
       alignItems: 'center',
+      justifyContent: 'space-between',
+      padding: 14,
       borderRadius: 10,
       borderWidth: 1,
       borderColor: theme.border,
       backgroundColor: theme.cardBg,
       marginBottom: 10
     },
-    folderRowMain: {
-      flex: 1,
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'space-between',
-      padding: 14
-    },
     folderRowText: { fontSize: 15.5, fontWeight: '600', color: theme.text },
     folderRowCount: { fontSize: 13, color: theme.textMuted },
-    folderTrashButton: { paddingHorizontal: 14, paddingVertical: 14 },
-    folderTrashText: { fontSize: 16 },
-    newFolderPrompt: { paddingVertical: 10, marginBottom: 10 },
-    newFolderPromptText: { color: theme.accent, fontSize: 14, fontWeight: '600' },
     newFolderRow: { flexDirection: 'row', gap: 8, marginBottom: 12 },
     newFolderInput: {
       flex: 1,

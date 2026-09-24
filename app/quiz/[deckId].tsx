@@ -15,6 +15,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { readDeckFile } from '../../lib/workspace'
 import { readSampleDeck, SAMPLE_DECK_URI } from '../../lib/sampleDeck'
 import { loadQuizSettings, saveQuizSettings, DEFAULT_QUIZ_SETTINGS, type QuizSettings, type PromptSide } from '../../lib/quizSettings'
+import { saveQuizScore } from '../../lib/quizScores'
 import { useTheme, type Theme } from '../../lib/theme'
 import type { DatabaseFile, DatabaseRow } from '../../lib/types'
 
@@ -82,6 +83,16 @@ export default function QuizScreen() {
   const [error, setError] = useState<string | null>(null)
   const flashAnim = useRef(new Animated.Value(0)).current
   const [flashKind, setFlashKind] = useState<'correct' | 'incorrect' | null>(null)
+
+  // Records this attempt as the deck's "most recent quiz score" once the run actually finishes -
+  // guarded on questions.length so it can't fire on the initial index===0 render before any
+  // questions have loaded.
+  useEffect(() => {
+    if (uri && questions.length > 0 && index >= questions.length && score.total > 0) {
+      saveQuizScore(uri, { correct: score.correct, total: score.total })
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [index, questions.length])
 
   useEffect(() => {
     if (!uri) return

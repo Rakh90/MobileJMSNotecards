@@ -1,84 +1,67 @@
-import { View, Text, Pressable, StyleSheet } from 'react-native'
+import { View, Text, Pressable, StyleSheet, Alert } from 'react-native'
 import { router } from 'expo-router'
-import { SRS_DUE_KEY, SRS_CORRECT_KEY, SRS_INCORRECT_KEY, isCardDue } from '../lib/srs'
+import { SRS_DUE_KEY, isCardDue } from '../lib/srs'
 import type { Theme } from '../lib/theme'
 import type { DatabaseFile } from '../lib/types'
+import type { QuizScore } from '../lib/quizScores'
 
-function dueCount(rows: DatabaseFile['rows']): number {
-  return rows.filter((r) => isCardDue(r.properties[SRS_DUE_KEY])).length
-}
-
-// "Learned" = not currently due, i.e. it's been graded correct at least once and is scheduled
-// for a future review rather than sitting in the immediate queue.
-function learnedProgress(rows: DatabaseFile['rows']): { learned: number; total: number; pct: number } {
-  const total = rows.length
-  const learned = total - dueCount(rows)
-  return { learned, total, pct: total === 0 ? 0 : (learned / total) * 100 }
-}
-
-function progressColor(pct: number, theme: Theme): string {
-  if (pct >= 100) return theme.success
-  if (pct > 69) return theme.warning
-  return theme.danger
-}
-
-function score(rows: DatabaseFile['rows']): { correct: number; incorrect: number } {
-  let correct = 0
-  let incorrect = 0
-  for (const r of rows) {
-    correct += Number(r.properties[SRS_CORRECT_KEY]) || 0
-    incorrect += Number(r.properties[SRS_INCORRECT_KEY]) || 0
-  }
-  return { correct, incorrect }
+// "Learned" = not currently due, i.e. it's been graded correct at least once in study mode and
+// is scheduled for a future review rather than sitting in the immediate queue.
+function learnedCounts(rows: DatabaseFile['rows']): { learned: number; notLearned: number } {
+  const notLearned = rows.filter((r) => isCardDue(r.properties[SRS_DUE_KEY])).length
+  return { learned: rows.length - notLearned, notLearned }
 }
 
 export default function DeckRow({
   uri,
   file,
   theme,
+  quizScore,
   onMove
 }: {
   uri: string
   file: DatabaseFile
   theme: Theme
+  quizScore?: QuizScore
   // Omitted for the bundled sample deck, which isn't a real file and can't be organized.
   onMove?: (uri: string, title: string) => void
 }) {
   const styles = makeStyles(theme)
-  const { learned, total, pct } = learnedProgress(file.rows)
-  const { correct, incorrect } = score(file.rows)
+  const { learned, notLearned } = learnedCounts(file.rows)
+
+  function openMenu(): void {
+    if (!onMove) return
+    Alert.alert(file.title, undefined, [
+      { text: 'Move to folder…', onPress: () => onMove(uri, file.title) },
+      { text: 'Cancel', style: 'cancel' }
+    ])
+  }
 
   return (
     <View style={styles.deckRow}>
-      <Pressable style={{ flex: 1 }} onPress={() => router.push(`/study/${encodeURIComponent(uri)}`)}>
+      <Pressable
+        style={{ flex: 1 }}
+        onPress={() => router.push(`/study/${encodeURIComponent(uri)}`)}
+        onLongPress={onMove ? openMenu : undefined}
+      >
         <Text style={styles.deckTitle}>{file.title}</Text>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 2 }}>
-          <Text style={styles.deckMeta}>
-            {file.rows.length} card{file.rows.length === 1 ? '' : 's'}
+          <Text style={styles.scoreText}>
+            <Text style={{ color: theme.success }}>✓{learned}</Text>{' '}
+            <Text style={{ color: theme.danger }}>✗{notLearned}</Text>
           </Text>
-          {(correct > 0 || incorrect > 0) && (
-            <Text style={styles.scoreText}>
-              <Text style={{ color: theme.success }}>✓{correct}</Text>{' '}
-              <Text style={{ color: theme.danger }}>✗{incorrect}</Text>
-            </Text>
-          )}
         </View>
       </Pressable>
-      {total > 0 && (
-        <View style={styles.dueBadge}>
-          <Text style={[styles.dueBadgeText, { color: progressColor(pct, theme) }]}>
-            {learned}/{total}
+      {quizScore && (
+        <View style={styles.quizScoreBadge}>
+          <Text style={styles.quizScoreText}>
+            {quizScore.correct}/{quizScore.total}
           </Text>
         </View>
       )}
       <Pressable style={styles.quizButton} onPress={() => router.push(`/quiz/${encodeURIComponent(uri)}`)}>
         <Text style={styles.quizButtonText}>Quiz</Text>
       </Pressable>
-      {onMove && (
-        <Pressable style={styles.moveButton} onPress={() => onMove(uri, file.title)} hitSlop={8}>
-          <Text style={styles.moveButtonText}>📁</Text>
-        </Pressable>
-      )}
     </View>
   )
 }
@@ -97,13 +80,10 @@ function makeStyles(theme: Theme) {
       gap: 8
     },
     deckTitle: { fontSize: 16, fontWeight: '600', color: theme.text },
-    deckMeta: { fontSize: 13, color: theme.textMuted },
-    scoreText: { fontSize: 12.5, fontWeight: '600' },
-    dueBadge: { backgroundColor: theme.bgActive, paddingVertical: 4, paddingHorizontal: 10, borderRadius: 999 },
-    dueBadgeText: { fontWeight: '700', fontSize: 12.5 },
+    scoreText: { fontSize: 13, fontWeight: '600' },
+    quizScoreBadge: { backgroundColor: theme.bgActive, paddingVertical: 4, paddingHorizontal: 10, borderRadius: 999 },
+    quizScoreText: { color: theme.accent, fontWeight: '700', fontSize: 12.5 },
     quizButton: { borderWidth: 1, borderColor: theme.accent, paddingVertical: 6, paddingHorizontal: 12, borderRadius: 8 },
-    quizButtonText: { color: theme.accent, fontWeight: '600', fontSize: 13 },
-    moveButton: { padding: 4 },
-    moveButtonText: { fontSize: 17 }
+    quizButtonText: { color: theme.accent, fontWeight: '600', fontSize: 13 }
   })
 }
