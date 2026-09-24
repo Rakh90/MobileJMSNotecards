@@ -30,8 +30,9 @@ export default function DeckListScreen() {
     try {
       if (uri) setDecks(await listFlashcardDecks(uri))
       setSampleDeck(await readSampleDeck())
-    } catch {
-      setError('Could not read that folder. It may have moved or lost permission — try choosing it again.')
+    } catch (err) {
+      const detail = err instanceof Error ? err.message : String(err)
+      setError(`Could not read that folder (${detail}). It may have moved or lost permission — try choosing it again.`)
     } finally {
       setLoading(false)
     }
