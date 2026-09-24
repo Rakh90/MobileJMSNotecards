@@ -12,6 +12,14 @@ function learnedCounts(rows: DatabaseFile['rows']): { learned: number; notLearne
   return { learned: rows.length - notLearned, notLearned }
 }
 
+function scoreColor(correct: number, total: number, theme: Theme): string {
+  if (total === 0) return theme.textMuted
+  const pct = (correct / total) * 100
+  if (pct >= 100) return theme.success
+  if (pct > 69) return theme.warning
+  return theme.danger
+}
+
 export default function DeckRow({
   uri,
   file,
@@ -28,6 +36,8 @@ export default function DeckRow({
 }) {
   const styles = makeStyles(theme)
   const { learned, notLearned } = learnedCounts(file.rows)
+  // No quiz taken yet reads as 0 out of the deck's card count, rather than hiding the badge.
+  const effectiveQuizScore = quizScore ?? { correct: 0, total: file.rows.length }
 
   function openMenu(): void {
     if (!onMove) return
@@ -52,13 +62,11 @@ export default function DeckRow({
           </Text>
         </View>
       </Pressable>
-      {quizScore && (
-        <View style={styles.quizScoreBadge}>
-          <Text style={styles.quizScoreText}>
-            {quizScore.correct}/{quizScore.total}
-          </Text>
-        </View>
-      )}
+      <View style={styles.quizScoreBadge}>
+        <Text style={[styles.quizScoreText, { color: scoreColor(effectiveQuizScore.correct, effectiveQuizScore.total, theme) }]}>
+          {effectiveQuizScore.correct}/{effectiveQuizScore.total}
+        </Text>
+      </View>
       <Pressable style={styles.quizButton} onPress={() => router.push(`/quiz/${encodeURIComponent(uri)}`)}>
         <Text style={styles.quizButtonText}>Quiz</Text>
       </Pressable>
@@ -82,7 +90,7 @@ function makeStyles(theme: Theme) {
     deckTitle: { fontSize: 16, fontWeight: '600', color: theme.text },
     scoreText: { fontSize: 13, fontWeight: '600' },
     quizScoreBadge: { backgroundColor: theme.bgActive, paddingVertical: 4, paddingHorizontal: 10, borderRadius: 999 },
-    quizScoreText: { color: theme.accent, fontWeight: '700', fontSize: 12.5 },
+    quizScoreText: { fontWeight: '700', fontSize: 12.5 },
     quizButton: { borderWidth: 1, borderColor: theme.accent, paddingVertical: 6, paddingHorizontal: 12, borderRadius: 8 },
     quizButtonText: { color: theme.accent, fontWeight: '600', fontSize: 13 }
   })

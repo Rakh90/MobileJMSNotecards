@@ -255,7 +255,9 @@ export default function QuizScreen() {
           <Text style={styles.buttonText}>Quiz again</Text>
         </Pressable>
         <Pressable style={styles.linkButton} onPress={() => router.back()}>
-          <Text style={styles.linkButtonText}>Back to decks</Text>
+          <Text style={styles.linkButtonText} numberOfLines={1}>
+            Back to decks
+          </Text>
         </Pressable>
         {settingsModal}
       </View>
