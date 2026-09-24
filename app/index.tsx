@@ -4,11 +4,15 @@ import { router, useFocusEffect } from 'expo-router'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import {
   loadWorkspaceUri,
+  saveWorkspaceUri,
   pickWorkspaceFolder,
   clearWorkspaceUri,
   listFlashcardDecks,
+  DRIVE_PREFIX,
   type DeckEntry
 } from '../lib/workspace'
+import { signInToDrive, getDriveAccessToken } from '../lib/googleDrive'
+import DrivePickerModal from '../components/DrivePickerModal'
 import { readSampleDeck, SAMPLE_DECK_URI } from '../lib/sampleDeck'
 import { SRS_DUE_KEY, isCardDue } from '../lib/srs'
 import { useTheme, type Theme } from '../lib/theme'
@@ -23,6 +27,8 @@ export default function DeckListScreen() {
   const [sampleDeck, setSampleDeck] = useState<DatabaseFile | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [driveAccessToken, setDriveAccessToken] = useState<string | null>(null)
+  const [driveConnecting, setDriveConnecting] = useState(false)
 
   const refresh = useCallback(async (uri: string | null) => {
     setLoading(true)
@@ -59,6 +65,31 @@ export default function DeckListScreen() {
       setWorkspaceUri(uri)
       refresh(uri)
     }
+  }
+
+  // Opens the native Google account/consent UI, then hands the resulting access token to
+  // DrivePickerModal so the user can browse and select their Drive folder. The folder id
+  // itself only becomes the active workspace once they actually pick something (see
+  // handleDrivePick) — cancelling just closes the modal with no state change.
+  async function connectDrive(): Promise<void> {
+    setDriveConnecting(true)
+    try {
+      await signInToDrive()
+      const token = await getDriveAccessToken()
+      setDriveAccessToken(token)
+    } catch {
+      setError('Could not sign in to Google Drive. Try again.')
+    } finally {
+      setDriveConnecting(false)
+    }
+  }
+
+  function handleDrivePick(folder: { id: string; name: string }): void {
+    setDriveAccessToken(null)
+    const uri = DRIVE_PREFIX + folder.id
+    saveWorkspaceUri(uri)
+    setWorkspaceUri(uri)
+    refresh(uri)
   }
 
   async function changeFolder(): Promise<void> {
@@ -110,7 +141,16 @@ export default function DeckListScreen() {
                   syncs to your PC, with a "databases" subfolder inside it.
                 </Text>
                 <Pressable style={styles.button} onPress={chooseFolder}>
-                  <Text style={styles.buttonText}>Choose folder</Text>
+                  <Text style={styles.buttonText}>Choose local folder</Text>
+                </Pressable>
+                <Pressable
+                  style={[styles.button, styles.buttonSecondary]}
+                  onPress={connectDrive}
+                  disabled={driveConnecting}
+                >
+                  <Text style={[styles.buttonText, styles.buttonTextSecondary]}>
+                    {driveConnecting ? 'Connecting…' : 'Connect Google Drive'}
+                  </Text>
                 </Pressable>
               </View>
             )}
@@ -135,6 +175,11 @@ export default function DeckListScreen() {
           <Text style={styles.linkButtonText}>Change folder</Text>
         </Pressable>
       )}
+      <DrivePickerModal
+        accessToken={driveAccessToken}
+        onPick={handleDrivePick}
+        onCancel={() => setDriveAccessToken(null)}
+      />
     </View>
   )
 }
@@ -144,8 +189,10 @@ function makeStyles(theme: Theme) {
     container: { flex: 1, backgroundColor: theme.bg },
     center: { alignItems: 'center', justifyContent: 'center', padding: 24 },
     subtitle: { fontSize: 14, color: theme.textMuted, textAlign: 'center', marginBottom: 10 },
-    button: { backgroundColor: theme.accent, paddingVertical: 12, paddingHorizontal: 24, borderRadius: 8, alignSelf: 'center' },
+    button: { backgroundColor: theme.accent, paddingVertical: 12, paddingHorizontal: 24, borderRadius: 8, alignSelf: 'center', marginTop: 8 },
+    buttonSecondary: { backgroundColor: 'transparent', borderWidth: 1, borderColor: theme.accent },
     buttonText: { color: theme.accentContrast, fontWeight: '600', fontSize: 15 },
+    buttonTextSecondary: { color: theme.accent },
     list: { padding: 16 },
     folderPrompt: { padding: 14, borderRadius: 10, borderWidth: 1, borderColor: theme.border, borderStyle: 'dashed' },
     deckRow: {
