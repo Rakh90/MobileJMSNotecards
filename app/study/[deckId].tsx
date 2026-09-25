@@ -47,12 +47,17 @@ export default function StudyScreen() {
   const pop = useRef(new Animated.Value(0.6)).current
 
   // Card flip: squash the card to nothing on its horizontal axis, swap sides at the midpoint,
-  // then expand it back out.
+  // then expand it back out. Tapping again flips back, so a card can be turned over and over
+  // until it's graded (by swipe or button).
+  const flipping = useRef(false)
   function reveal(): void {
-    if (showBack) return
+    if (flipping.current) return
+    flipping.current = true
     Animated.timing(flip, { toValue: 0, duration: 110, useNativeDriver: true }).start(() => {
-      setShowBack(true)
-      Animated.timing(flip, { toValue: 1, duration: 110, useNativeDriver: true }).start()
+      setShowBack((b) => !b)
+      Animated.timing(flip, { toValue: 1, duration: 110, useNativeDriver: true }).start(() => {
+        flipping.current = false
+      })
     })
   }
   revealRef.current = reveal
