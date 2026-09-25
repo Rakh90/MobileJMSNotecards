@@ -78,26 +78,25 @@ export default function DeckRow({
         onPress={() => router.push(`/study/${encodeURIComponent(uri)}`)}
         onLongPress={openMenu}
       >
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-          <Text style={[styles.deckTitle, { flexShrink: 1 }]} numberOfLines={1}>
-            {file.title}
-          </Text>
-          <Text style={styles.scoreText}>
-            <Text style={{ color: theme.success }}>✓{learned}</Text>{' '}
-            <Text style={{ color: theme.danger }}>✗{notLearned}</Text>
-          </Text>
-        </View>
+        <Text style={styles.deckTitle} numberOfLines={1}>
+          {file.title}
+        </Text>
+        <Text style={styles.statsLine}>
+          <Text style={{ color: theme.success }}>{`✓${learned} learned`}</Text>
+          {'   '}
+          <Text style={{ color: theme.danger }}>{`✗${notLearned} to learn`}</Text>
+        </Text>
       </Pressable>
-      <View style={styles.quizScoreBadge}>
+      <View style={styles.quizColumn}>
+        <Pressable style={styles.quizButton} onPress={() => router.push(`/quiz/${encodeURIComponent(uri)}`)}>
+          <LinearGradient colors={theme.btnGrad} style={StyleSheet.absoluteFill} />
+          <Sheen radius={8} height="50%" />
+          <Text style={styles.quizButtonText}>Quiz</Text>
+        </Pressable>
         <Text style={[styles.quizScoreText, { color: scoreColor(effectiveQuizScore.correct, effectiveQuizScore.total, theme) }]}>
-          {effectiveQuizScore.correct}/{effectiveQuizScore.total}
+          {`${effectiveQuizScore.correct}/${effectiveQuizScore.total}`}
         </Text>
       </View>
-      <Pressable style={styles.quizButton} onPress={() => router.push(`/quiz/${encodeURIComponent(uri)}`)}>
-        <LinearGradient colors={theme.btnGrad} style={StyleSheet.absoluteFill} />
-        <Sheen radius={8} height="50%" />
-        <Text style={styles.quizButtonText}>Quiz</Text>
-      </Pressable>
     </MetalCard>
   )
 }
@@ -111,10 +110,10 @@ function makeStyles(theme: Theme) {
       marginBottom: 10,
       gap: 8
     },
-    deckTitle: { fontSize: 16, fontWeight: '600', color: theme.text },
-    scoreText: { fontSize: 13, fontWeight: '600' },
-    quizScoreBadge: { backgroundColor: theme.bgActive, paddingVertical: 4, paddingHorizontal: 10, borderRadius: 999 },
-    quizScoreText: { fontWeight: '700', fontSize: 12.5 },
+    deckTitle: { fontSize: 16, fontWeight: '600', color: theme.text, paddingRight: 8 },
+    statsLine: { fontSize: 12.5, fontWeight: '600', marginTop: 3, paddingRight: 8 },
+    quizColumn: { alignItems: 'center', minWidth: 64 },
+    quizScoreText: { fontWeight: '700', fontSize: 12.5, marginTop: 5, textAlign: 'center', paddingRight: 2 },
     quizButton: { paddingVertical: 7, paddingHorizontal: 14, borderRadius: 8, overflow: 'hidden' },
     quizButtonText: { color: '#fff', fontWeight: '600', fontSize: 13 }
   })
