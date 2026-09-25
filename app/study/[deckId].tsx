@@ -341,8 +341,8 @@ function makeStyles(theme: Theme) {
     cardText: { fontSize: 21, textAlign: 'center', color: theme.text, fontWeight: '500' },
     swipeTint: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, borderRadius: 16 },
     tapHint: { fontSize: 12, color: theme.textMuted, marginTop: 18 },
-    title: { fontSize: 20, fontWeight: '700', textAlign: 'center', color: theme.text },
-    subtitle: { fontSize: 14, color: theme.textMuted, textAlign: 'center' },
+    title: { fontSize: 20, fontWeight: '700', textAlign: 'center', color: theme.text, alignSelf: 'stretch' },
+    subtitle: { fontSize: 14, color: theme.textMuted, textAlign: 'center', alignSelf: 'stretch' },
     button: { backgroundColor: theme.accent, paddingVertical: 14, borderRadius: 10, marginTop: 16, alignItems: 'center' },
     buttonText: { color: theme.accentContrast, fontWeight: '600', fontSize: 15 },
     gradeRow: { flexDirection: 'row', gap: 10, marginTop: 16 },
@@ -350,7 +350,7 @@ function makeStyles(theme: Theme) {
     gradeBad: { backgroundColor: theme.danger },
     gradeGood: { backgroundColor: theme.success },
     gradeButtonText: { color: '#fff', fontWeight: '600', fontSize: 15 },
-    linkButton: { padding: 12, marginTop: 4 },
-    linkButtonText: { color: theme.accent, fontSize: 13.5 }
+    linkButton: { padding: 12, marginTop: 4, alignSelf: 'stretch' },
+    linkButtonText: { color: theme.accent, fontSize: 13.5, textAlign: 'center', alignSelf: 'stretch' }
   })
 }

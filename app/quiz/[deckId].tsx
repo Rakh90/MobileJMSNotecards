@@ -456,12 +456,12 @@ function makeStyles(theme: Theme) {
       color: theme.text
     },
     answerReveal: { textAlign: 'center', fontSize: 15, fontWeight: '600' },
-    title: { fontSize: 20, fontWeight: '700', textAlign: 'center', color: theme.text },
-    subtitle: { fontSize: 14, color: theme.textMuted, textAlign: 'center' },
+    title: { fontSize: 20, fontWeight: '700', textAlign: 'center', color: theme.text, alignSelf: 'stretch' },
+    subtitle: { fontSize: 14, color: theme.textMuted, textAlign: 'center', alignSelf: 'stretch' },
     button: { backgroundColor: theme.accent, paddingVertical: 14, borderRadius: 10, alignItems: 'center' },
     buttonText: { color: theme.accentContrast, fontWeight: '600', fontSize: 15 },
-    linkButton: { padding: 12, marginTop: 4 },
-    linkButtonText: { color: theme.accent, fontSize: 13.5 },
+    linkButton: { padding: 12, marginTop: 4, alignSelf: 'stretch' },
+    linkButtonText: { color: theme.accent, fontSize: 13.5, textAlign: 'center', alignSelf: 'stretch' },
     modalOverlay: {
       position: 'absolute',
       top: 0,
