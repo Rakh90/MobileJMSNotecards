@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useFocusEffect } from 'expo-router'
-import { loadWorkspaceUri, listFlashcardDecks, type DeckEntry } from './workspace'
+import { loadWorkspaceUri, listFlashcardDecksWithStatus, pendingCount, type DeckEntry } from './workspace'
 
 // Shared by the main dashboard and each folder's drill-down screen - both need the same
 // workspace/decks data, just filtered differently, so the loading and refresh-on-focus logic
@@ -10,12 +10,19 @@ export function useDecks() {
   const [decks, setDecks] = useState<DeckEntry[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [offline, setOffline] = useState(false)
+  const [pending, setPending] = useState(0)
 
   const refresh = useCallback(async (uri: string | null) => {
     setLoading(true)
     setError(null)
     try {
-      if (uri) setDecks(await listFlashcardDecks(uri))
+      if (uri) {
+        const result = await listFlashcardDecksWithStatus(uri)
+        setDecks(result.decks)
+        setOffline(result.offline)
+        setPending(await pendingCount())
+      }
     } catch (err) {
       const detail = err instanceof Error ? err.message : String(err)
       setError(`Could not read that folder (${detail}). It may have moved or lost permission — try choosing it again.`)
@@ -39,5 +46,5 @@ export function useDecks() {
     }, [workspaceUri, refresh])
   )
 
-  return { workspaceUri, setWorkspaceUri, decks, loading, error, setError, refresh }
+  return { workspaceUri, setWorkspaceUri, decks, loading, error, setError, refresh, offline, pending }
 }

@@ -44,10 +44,10 @@ export default function DeckRow({
   const effectiveQuizScore = quizScore ?? { correct: 0, total: file.rows.length }
 
   function openMenu(): void {
-    if (!onMove) return
     Alert.alert(file.title, undefined, [
-      { text: 'Move to folder…', onPress: () => onMove(uri, file.title) },
-      { text: 'Cancel', style: 'cancel' }
+      { text: 'Study weak cards', onPress: () => router.push(`/study/${encodeURIComponent(uri)}?mode=weak`) },
+      ...(onMove ? [{ text: 'Move to folder…', onPress: () => onMove(uri, file.title) }] : []),
+      { text: 'Cancel', style: 'cancel' as const }
     ])
   }
 
@@ -57,7 +57,7 @@ export default function DeckRow({
       <Pressable
         style={{ flex: 1 }}
         onPress={() => router.push(`/study/${encodeURIComponent(uri)}`)}
-        onLongPress={onMove ? openMenu : undefined}
+        onLongPress={openMenu}
       >
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
           <Text style={[styles.deckTitle, { flexShrink: 1 }]} numberOfLines={1}>

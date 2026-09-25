@@ -9,6 +9,7 @@ import {
   SRS_EASE_KEY,
   SRS_CORRECT_KEY,
   SRS_INCORRECT_KEY,
+  SRS_LAST_KEY,
   DEFAULT_SRS,
   isCardDue,
   nextSrsState
@@ -16,18 +17,29 @@ import {
 import { useTheme, type Theme } from '../../lib/theme'
 import { MetalButton, MetalCard } from '../../components/Metal'
 import { recordGrade, restoreStreak, type StreakState } from '../../lib/streak'
+import { weakestFirst, shuffled } from '../../lib/weak'
 import type { DatabaseFile, DatabaseRow } from '../../lib/types'
+
+// A card in the current session, tagged with the deck file it belongs to so grading a mixed
+// session still writes each card's progress back to its own deck.
+interface StudyItem {
+  uri: string
+  row: DatabaseRow
+}
 
 export default function StudyScreen() {
   const theme = useTheme()
   const styles = makeStyles(theme)
   const insets = useSafeAreaInsets()
-  const { deckId } = useLocalSearchParams<{ deckId: string }>()
-  const uri = decodeURIComponent(deckId ?? '')
+  const { deckId, uris: urisParam, mode } = useLocalSearchParams<{ deckId: string; uris?: string; mode?: string }>()
+  const uris: string[] = urisParam ? JSON.parse(urisParam) : [decodeURIComponent(deckId ?? '')]
+  const weakMode = mode === 'weak'
+  const isMixed = uris.length > 1
+  const sessionKey = uris.join('|') + '#' + (mode ?? 'due')
   const navigation = useNavigation()
 
-  const [db, setDb] = useState<DatabaseFile | null>(null)
-  const [queue, setQueue] = useState<DatabaseRow[]>([])
+  const [dbs, setDbs] = useState<Record<string, DatabaseFile> | null>(null)
+  const [queue, setQueue] = useState<StudyItem[]>([])
   const [showBack, setShowBack] = useState(false)
   const flip = useRef(new Animated.Value(1)).current
   const pop = useRef(new Animated.Value(0.6)).current
@@ -43,7 +55,7 @@ export default function StudyScreen() {
   }
   const [gradedCount, setGradedCount] = useState(0)
   const [error, setError] = useState<string | null>(null)
-  const [lastGrade, setLastGrade] = useState<{ prevRow: DatabaseRow; prevStreak: StreakState } | null>(null)
+  const [lastGrade, setLastGrade] = useState<{ uri: string; prevRow: DatabaseRow; prevStreak: StreakState } | null>(null)
   const swipeX = useRef(new Animated.Value(0)).current
   const gradeRef = useRef<(gotIt: boolean) => Promise<void>>(async () => {})
   const showBackRef = useRef(false)
@@ -72,17 +84,24 @@ export default function StudyScreen() {
   ).current
 
   function load(): void {
-    if (!uri) return
-    readDeckFile(uri)
-      .then((file) => {
-        setDb(file)
-        navigation.setOptions({ title: file.title })
-        setQueue(file.rows.filter((r) => isCardDue(r.properties[SRS_DUE_KEY])))
+    Promise.all(uris.map(async (u) => [u, await readDeckFile(u)] as const))
+      .then((entries) => {
+        const map = Object.fromEntries(entries)
+        setDbs(map)
+        navigation.setOptions({
+          title: isMixed ? (weakMode ? 'Weak cards' : 'Mixed study') : weakMode ? `Weak: ${entries[0][1].title}` : entries[0][1].title
+        })
+        const all: StudyItem[] = entries.flatMap(([u, f]) => f.rows.map((row) => ({ uri: u, row })))
+        if (weakMode) setQueue(weakestFirst(all))
+        else {
+          const due = all.filter((i) => isCardDue(i.row.properties[SRS_DUE_KEY]))
+          setQueue(isMixed ? shuffled(due) : due)
+        }
       })
       .catch(() => setError('Could not open this deck.'))
   }
 
-  const finished = !!db && queue.length === 0
+  const finished = !!dbs && queue.length === 0
   useEffect(() => {
     if (finished) {
       pop.setValue(0.6)
@@ -93,11 +112,12 @@ export default function StudyScreen() {
   useEffect(() => {
     load()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [uri])
+  }, [sessionKey])
 
   async function grade(gotIt: boolean): Promise<void> {
-    if (!db || queue.length === 0) return
-    const current = queue[0]
+    if (!dbs || queue.length === 0) return
+    const { uri, row: current } = queue[0]
+    const db = dbs[uri]
     const currentState = {
       interval: (current.properties[SRS_INTERVAL_KEY] as number) ?? DEFAULT_SRS.interval,
       ease: (current.properties[SRS_EASE_KEY] as number) ?? DEFAULT_SRS.ease
@@ -115,17 +135,18 @@ export default function StudyScreen() {
                 [SRS_EASE_KEY]: next.ease,
                 [SRS_DUE_KEY]: next.dueDate,
                 [SRS_CORRECT_KEY]: (Number(r.properties[SRS_CORRECT_KEY]) || 0) + (gotIt ? 1 : 0),
-                [SRS_INCORRECT_KEY]: (Number(r.properties[SRS_INCORRECT_KEY]) || 0) + (gotIt ? 0 : 1)
+                [SRS_INCORRECT_KEY]: (Number(r.properties[SRS_INCORRECT_KEY]) || 0) + (gotIt ? 0 : 1),
+                [SRS_LAST_KEY]: new Date().toISOString()
               }
             }
           : r
       )
     }
-    setDb(nextDb)
+    setDbs((d) => (d ? { ...d, [uri]: nextDb } : d))
     setQueue((q) => q.slice(1))
     setGradedCount((c) => c + 1)
     setShowBack(false)
-    recordGrade().then((prevStreak) => setLastGrade({ prevRow: current, prevStreak }))
+    recordGrade().then((prevStreak) => setLastGrade({ uri, prevRow: current, prevStreak }))
     try {
       await writeDeckFile(uri, nextDb)
     } catch {
@@ -135,11 +156,12 @@ export default function StudyScreen() {
   gradeRef.current = grade
 
   async function undo(): Promise<void> {
-    if (!lastGrade || !db) return
-    const { prevRow, prevStreak } = lastGrade
+    if (!lastGrade || !dbs) return
+    const { uri, prevRow, prevStreak } = lastGrade
+    const db = dbs[uri]
     const nextDb: DatabaseFile = { ...db, rows: db.rows.map((r) => (r.id === prevRow.id ? prevRow : r)) }
-    setDb(nextDb)
-    setQueue((q) => [prevRow, ...q])
+    setDbs((d) => (d ? { ...d, [uri]: nextDb } : d))
+    setQueue((q) => [{ uri, row: prevRow }, ...q])
     setGradedCount((c) => Math.max(0, c - 1))
     setShowBack(false)
     setLastGrade(null)
@@ -160,7 +182,7 @@ export default function StudyScreen() {
     )
   }
 
-  if (!db) {
+  if (!dbs) {
     return (
       <View style={styles.center}>
         <ActivityIndicator color={theme.accent} />
@@ -172,12 +194,14 @@ export default function StudyScreen() {
     return (
       <View style={[styles.center, { paddingBottom: 24 + insets.bottom }]}>
         <Animated.Text style={[styles.title, { transform: [{ scale: pop }] }]}>
-          {gradedCount > 0 ? 'All done for now 🎉' : 'Nothing due right now'}
+          {gradedCount > 0 ? 'All done for now 🎉' : weakMode ? 'No weak cards yet' : 'Nothing due right now'}
         </Animated.Text>
         <Text style={styles.subtitle}>
           {gradedCount > 0
             ? `Studied ${gradedCount} card${gradedCount === 1 ? '' : 's'}. Come back later for more.`
-            : 'Check back once some cards are due.'}
+            : weakMode
+              ? 'Cards you keep missing will show up here.'
+              : 'Check back once some cards are due.'}
         </Text>
         <MetalButton label="Back to decks" colors={theme.btnGrad} onPress={() => router.back()} style={{ marginTop: 16 }} />
         {lastGrade && (
@@ -189,7 +213,7 @@ export default function StudyScreen() {
     )
   }
 
-  const current = queue[0]
+  const current = queue[0].row
   const front = (current.properties.front as string) || '(empty)'
   const back = (current.properties.back as string) || '(empty)'
 

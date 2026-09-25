@@ -2,6 +2,16 @@ import * as FileSystem from 'expo-file-system/legacy'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import type { DatabaseFile } from './types'
 import { listDriveDecks, readDriveFile, writeDriveFile } from './driveApi'
+import {
+  readCached,
+  writeCached,
+  isDirty,
+  markClean,
+  dirtyUris,
+  saveDeckList,
+  loadDeckList,
+  mergeProgress
+} from './offlineCache'
 
 const { StorageAccessFramework } = FileSystem
 const STORAGE_KEY = 'jmsnote.workspaceUri'
@@ -56,12 +66,62 @@ export interface DeckEntry {
 
 // A workspace root looks like notes/, databases/, attachments/, etc. (see the desktop app's
 // main/workspace.ts) — only databases/ matters here, and only the ones with a flashcards view.
-export async function listFlashcardDecks(workspaceUri: string): Promise<DeckEntry[]> {
-  if (workspaceUri.startsWith(DRIVE_PREFIX)) {
-    const folderId = workspaceUri.slice(DRIVE_PREFIX.length)
-    const entries = await listDriveDecks(folderId)
-    return entries.map((e) => ({ uri: DRIVE_PREFIX + e.fileId, file: e.file }))
+// Pushes any study progress that was saved offline up to Drive, merging per card (newest grade
+// wins). Anything that fails stays queued for the next attempt.
+export async function syncPending(): Promise<void> {
+  for (const uri of await dirtyUris()) {
+    try {
+      const local = await readCached(uri)
+      if (!local) {
+        await markClean(uri)
+        continue
+      }
+      const remote = await readDriveFile(uri.slice(DRIVE_PREFIX.length))
+      const merged = mergeProgress(remote, local)
+      await writeDriveFile(uri.slice(DRIVE_PREFIX.length), merged)
+      await writeCached(uri, merged, false)
+    } catch {
+      // still offline (or Drive is unhappy) - leave it queued
+    }
   }
+}
+
+export async function pendingCount(): Promise<number> {
+  return (await dirtyUris()).length
+}
+
+export interface DeckListResult {
+  decks: DeckEntry[]
+  offline: boolean
+}
+
+// Same as listFlashcardDecks, but says whether the result came from saved local copies because
+// Drive couldn't be reached. Successful Drive reads refresh the local copies as a side effect,
+// which is also what the manual "Download for offline" action relies on.
+export async function listFlashcardDecksWithStatus(workspaceUri: string): Promise<DeckListResult> {
+  if (!workspaceUri.startsWith(DRIVE_PREFIX)) return { decks: await listFlashcardDecks(workspaceUri), offline: false }
+  const folderId = workspaceUri.slice(DRIVE_PREFIX.length)
+  try {
+    await syncPending()
+    const entries = await listDriveDecks(folderId)
+    const decks = entries.map((e) => ({ uri: DRIVE_PREFIX + e.fileId, file: e.file }))
+    for (const d of decks) if (!(await isDirty(d.uri))) await writeCached(d.uri, d.file, false)
+    await saveDeckList(workspaceUri, decks.map((d) => d.uri))
+    return { decks, offline: false }
+  } catch (err) {
+    const uris = await loadDeckList(workspaceUri)
+    if (!uris) throw err
+    const decks: DeckEntry[] = []
+    for (const uri of uris) {
+      const file = await readCached(uri)
+      if (file) decks.push({ uri, file })
+    }
+    return { decks, offline: true }
+  }
+}
+
+export async function listFlashcardDecks(workspaceUri: string): Promise<DeckEntry[]> {
+  if (workspaceUri.startsWith(DRIVE_PREFIX)) return (await listFlashcardDecksWithStatus(workspaceUri)).decks
   const databasesUri = await findChildByName(workspaceUri, 'databases')
   if (!databasesUri) return []
   const children = await StorageAccessFramework.readDirectoryAsync(databasesUri)
@@ -81,13 +141,39 @@ export async function listFlashcardDecks(workspaceUri: string): Promise<DeckEntr
 }
 
 export async function readDeckFile(uri: string): Promise<DatabaseFile> {
-  if (uri.startsWith(DRIVE_PREFIX)) return readDriveFile(uri.slice(DRIVE_PREFIX.length))
+  if (uri.startsWith(DRIVE_PREFIX)) {
+    // A deck with unsynced offline progress is the source of truth until it's been pushed.
+    if (await isDirty(uri)) {
+      const cached = await readCached(uri)
+      if (cached) return cached
+    }
+    try {
+      const file = await readDriveFile(uri.slice(DRIVE_PREFIX.length))
+      await writeCached(uri, file, false)
+      return file
+    } catch (err) {
+      const cached = await readCached(uri)
+      if (cached) return cached
+      throw err
+    }
+  }
   const raw = await StorageAccessFramework.readAsStringAsync(uri)
   return JSON.parse(raw)
 }
 
 export async function writeDeckFile(uri: string, db: DatabaseFile): Promise<void> {
-  if (uri.startsWith(DRIVE_PREFIX)) return writeDriveFile(uri.slice(DRIVE_PREFIX.length), db)
+  if (uri.startsWith(DRIVE_PREFIX)) {
+    // Save locally first and flag it, so progress survives being offline; only clear the flag
+    // once Drive has actually accepted it.
+    await writeCached(uri, db, true)
+    try {
+      await writeDriveFile(uri.slice(DRIVE_PREFIX.length), db)
+      await markClean(uri)
+    } catch {
+      // offline - it'll be pushed by syncPending() next time the deck list loads
+    }
+    return
+  }
   const next: DatabaseFile = { ...db, updatedAt: new Date().toISOString() }
   await StorageAccessFramework.writeAsStringAsync(uri, JSON.stringify(next, null, 2))
 }

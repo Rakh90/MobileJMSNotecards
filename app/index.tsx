@@ -17,6 +17,8 @@ import FolderIcon from '../components/FolderIcon'
 import MenuButton from '../components/MenuButton'
 import SortChips from '../components/SortChips'
 import { useStreak } from '../lib/streak'
+import StudyPickerModal from '../components/StudyPickerModal'
+import { DRIVE_PREFIX as DRIVE_URI_PREFIX } from '../lib/workspace'
 import { useSortMode, sortDecks } from '../lib/deckSort'
 
 export default function DeckListScreen() {
@@ -24,7 +26,8 @@ export default function DeckListScreen() {
   const styles = makeStyles(theme)
   const insets = useSafeAreaInsets()
   const navigation = useNavigation()
-  const { workspaceUri, setWorkspaceUri, decks, loading, error, setError, refresh } = useDecks()
+  const { workspaceUri, setWorkspaceUri, decks, loading, error, setError, refresh, offline, pending } = useDecks()
+  const [studyPickerOpen, setStudyPickerOpen] = useState(false)
   const { folders, assignments, trashedCount, reload: reloadFolders } = useDeckFolders()
   const { scores: quizScores } = useQuizScores()
   const [driveConnecting, setDriveConnecting] = useState(false)
@@ -42,13 +45,17 @@ export default function DeckListScreen() {
             <MenuButton
               theme={theme}
               items={[
+                { label: 'Study together…', icon: 'study', onPress: () => setStudyPickerOpen(true) },
                 { label: 'New folder', icon: 'plus', onPress: () => setCreatingFolder(true) },
                 {
                   label: 'Trash',
                   icon: 'trash',
                   badge: trashedCount > 0 ? String(trashedCount) : undefined,
                   onPress: () => router.push('/trash')
-                }
+                },
+                ...(workspaceUri?.startsWith(DRIVE_URI_PREFIX)
+                  ? [{ label: 'Download for offline', icon: 'download' as const, onPress: downloadForOffline }]
+                  : [])
               ]}
               footerItems={[{ label: 'Change deck source', icon: 'swap', onPress: changeFolder }]}
             />
@@ -56,7 +63,7 @@ export default function DeckListScreen() {
         : undefined
     })
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [navigation, theme, workspaceUri, trashedCount])
+  }, [navigation, theme, workspaceUri, trashedCount, decks.length])
 
   async function chooseFolder(): Promise<void> {
     const uri = await pickWorkspaceFolder()
@@ -136,6 +143,11 @@ export default function DeckListScreen() {
     reloadFolders()
   }
 
+  async function downloadForOffline(): Promise<void> {
+    await refresh(workspaceUri)
+    Alert.alert('Saved for offline', 'Your decks are stored on this phone and will open without a connection.')
+  }
+
   const trimmedQuery = search.trim().toLowerCase()
   const searchResults = useMemo(() => {
     if (!trimmedQuery) return []
@@ -159,6 +171,14 @@ export default function DeckListScreen() {
         contentContainerStyle={styles.list}
         refreshControl={<RefreshControl refreshing={loading} onRefresh={() => refresh(workspaceUri)} />}
       >
+        {workspaceUri && (offline || pending > 0) && (
+          <View style={styles.offlineBanner}>
+            <Text style={styles.offlineText}>
+              {offline ? 'Offline — showing saved copies. ' : ''}
+              {pending > 0 ? `${pending} deck${pending === 1 ? '' : 's'} waiting to sync.` : ''}
+            </Text>
+          </View>
+        )}
         {workspaceUri && (
           <View style={styles.streakChip}>
             <Text style={styles.streakText}>
@@ -296,6 +316,19 @@ export default function DeckListScreen() {
           </View>
         )}
       </ScrollView>
+      <StudyPickerModal
+        visible={studyPickerOpen}
+        theme={theme}
+        folders={folders}
+        decks={decks}
+        assignments={assignments}
+        rootId={null}
+        onClose={() => setStudyPickerOpen(false)}
+        onStart={(uris, mode) => {
+          setStudyPickerOpen(false)
+          router.push(`/study/mixed?uris=${encodeURIComponent(JSON.stringify(uris))}&mode=${mode}`)
+        }}
+      />
       <MoveToFolderModal
         deckTitle={moveTarget?.title ?? null}
         folders={folders}
@@ -346,6 +379,15 @@ function makeStyles(theme: Theme) {
     },
     folderNameRow: { flexDirection: 'row', alignItems: 'center', gap: 10, flexShrink: 1 },
     folderRowText: { fontSize: 15.5, fontWeight: '600', color: theme.text },
+    offlineBanner: {
+      borderWidth: 1,
+      borderColor: theme.warning,
+      borderRadius: 10,
+      paddingVertical: 8,
+      paddingHorizontal: 12,
+      marginBottom: 12
+    },
+    offlineText: { color: theme.warning, fontSize: 12.5 },
     streakChip: {
       alignSelf: 'flex-start',
       borderWidth: 1,

@@ -8,6 +8,9 @@ export const SRS_EASE_KEY = '__srsEase'
 export const SRS_DUE_KEY = '__srsDue'
 export const SRS_CORRECT_KEY = '__srsCorrect'
 export const SRS_INCORRECT_KEY = '__srsIncorrect'
+// ISO timestamp of the last time this card was graded - lets offline progress merge keep the
+// newest grade per card when the same deck was studied on two devices.
+export const SRS_LAST_KEY = '__srsLastGraded'
 
 export interface SrsState {
   interval: number

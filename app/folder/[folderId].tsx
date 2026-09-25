@@ -11,6 +11,7 @@ import { useTheme, type Theme } from '../../lib/theme'
 import { MetalCard } from '../../components/Metal'
 import FolderIcon from '../../components/FolderIcon'
 import MenuButton from '../../components/MenuButton'
+import StudyPickerModal from '../../components/StudyPickerModal'
 import SortChips from '../../components/SortChips'
 import { useSortMode, sortDecks } from '../../lib/deckSort'
 
@@ -24,6 +25,7 @@ export default function FolderScreen() {
   const { scores: quizScores } = useQuizScores()
   const [search, setSearch] = useState('')
   const [creatingFolder, setCreatingFolder] = useState(false)
+  const [studyPickerOpen, setStudyPickerOpen] = useState(false)
   const [newFolderName, setNewFolderName] = useState('')
   const [moveTarget, setMoveTarget] = useState<{ uri: string; title: string } | null>(null)
 
@@ -35,7 +37,10 @@ export default function FolderScreen() {
       headerRight: () => (
         <MenuButton
           theme={theme}
-          items={[{ label: 'New subfolder', icon: 'plus', onPress: () => setCreatingFolder(true) }]}
+          items={[
+            { label: 'Study this folder…', icon: 'study', onPress: () => setStudyPickerOpen(true) },
+            { label: 'New subfolder', icon: 'plus', onPress: () => setCreatingFolder(true) }
+          ]}
         />
       )
     })
@@ -197,6 +202,19 @@ export default function FolderScreen() {
           </>
         )}
       </ScrollView>
+      <StudyPickerModal
+        visible={studyPickerOpen}
+        theme={theme}
+        folders={folders}
+        decks={decks}
+        assignments={assignments}
+        rootId={folderId}
+        onClose={() => setStudyPickerOpen(false)}
+        onStart={(uris, mode) => {
+          setStudyPickerOpen(false)
+          router.push(`/study/mixed?uris=${encodeURIComponent(JSON.stringify(uris))}&mode=${mode}`)
+        }}
+      />
       <MoveToFolderModal
         deckTitle={moveTarget?.title ?? null}
         folders={folders}
