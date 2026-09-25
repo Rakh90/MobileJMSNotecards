@@ -5,7 +5,6 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { saveWorkspaceUri, pickWorkspaceFolder, clearWorkspaceUri, DRIVE_PREFIX } from '../lib/workspace'
 import { signInToDrive } from '../lib/googleDrive'
 import { findFolderByName } from '../lib/driveApi'
-import { SAMPLE_DECK_URI } from '../lib/sampleDeck'
 import { useDecks } from '../lib/useDecks'
 import { useDeckFolders } from '../lib/useDeckFolders'
 import { useQuizScores } from '../lib/useQuizScores'
@@ -19,7 +18,7 @@ export default function DeckListScreen() {
   const styles = makeStyles(theme)
   const insets = useSafeAreaInsets()
   const navigation = useNavigation()
-  const { workspaceUri, setWorkspaceUri, decks, sampleDeck, loading, error, setError, refresh } = useDecks()
+  const { workspaceUri, setWorkspaceUri, decks, loading, error, setError, refresh } = useDecks()
   const { folders, assignments, trashedCount, reload: reloadFolders } = useDeckFolders()
   const { scores: quizScores } = useQuizScores()
   const [driveConnecting, setDriveConnecting] = useState(false)
@@ -121,17 +120,11 @@ export default function DeckListScreen() {
   const trimmedQuery = search.trim().toLowerCase()
   const searchResults = useMemo(() => {
     if (!trimmedQuery) return []
-    const results: { uri: string; file: typeof decks[number]['file'] }[] = decks.filter((d) =>
-      d.file.title.toLowerCase().includes(trimmedQuery)
-    )
-    if (sampleDeck && sampleDeck.title.toLowerCase().includes(trimmedQuery)) {
-      results.unshift({ uri: SAMPLE_DECK_URI, file: sampleDeck })
-    }
-    return results
-  }, [decks, sampleDeck, trimmedQuery])
+    return decks.filter((d) => d.file.title.toLowerCase().includes(trimmedQuery))
+  }, [decks, trimmedQuery])
 
   const ungroupedDecks = decks.filter((d) => !assignments[d.uri])
-  const showSearchBar = decks.length > 0 || !!sampleDeck
+  const showSearchBar = decks.length > 0
 
   return (
     <View style={styles.container}>
@@ -160,7 +153,7 @@ export default function DeckListScreen() {
                 file={d.file}
                 theme={theme}
                 quizScore={quizScores[d.uri]}
-                onMove={d.uri === SAMPLE_DECK_URI ? undefined : (uri, title) => setMoveTarget({ uri, title })}
+                onMove={(uri, title) => setMoveTarget({ uri, title })}
               />
             ))}
             {searchResults.length === 0 && (
@@ -169,10 +162,6 @@ export default function DeckListScreen() {
           </>
         ) : (
           <>
-            {sampleDeck && (
-              <DeckRow uri={SAMPLE_DECK_URI} file={sampleDeck} theme={theme} quizScore={quizScores[SAMPLE_DECK_URI]} />
-            )}
-
             {!workspaceUri && (
               <View style={styles.folderPrompt}>
                 <Text style={styles.subtitle}>
@@ -257,7 +246,7 @@ export default function DeckListScreen() {
           </>
         )}
 
-        {loading && decks.length === 0 && !sampleDeck && (
+        {loading && decks.length === 0 && (
           <View style={styles.center}>
             <ActivityIndicator color={theme.accent} />
           </View>

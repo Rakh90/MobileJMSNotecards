@@ -13,7 +13,6 @@ import {
 import { useLocalSearchParams, useNavigation, router } from 'expo-router'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { readDeckFile } from '../../lib/workspace'
-import { readSampleDeck, SAMPLE_DECK_URI } from '../../lib/sampleDeck'
 import { loadQuizSettings, saveQuizSettings, DEFAULT_QUIZ_SETTINGS, type QuizSettings, type PromptSide } from '../../lib/quizSettings'
 import { saveQuizScore } from '../../lib/quizScores'
 import { useTheme, type Theme } from '../../lib/theme'
@@ -67,7 +66,6 @@ export default function QuizScreen() {
   const insets = useSafeAreaInsets()
   const { deckId } = useLocalSearchParams<{ deckId: string }>()
   const uri = decodeURIComponent(deckId ?? '')
-  const isSample = uri === SAMPLE_DECK_URI
   const navigation = useNavigation()
 
   const [db, setDb] = useState<DatabaseFile | null>(null)
@@ -96,7 +94,7 @@ export default function QuizScreen() {
 
   useEffect(() => {
     if (!uri) return
-    const read = isSample ? readSampleDeck() : readDeckFile(uri)
+    const read = readDeckFile(uri)
     Promise.all([read, loadQuizSettings()])
       .then(([file, loadedSettings]) => {
         setDb(file)

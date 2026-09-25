@@ -3,7 +3,6 @@ import { View, Text, Pressable, StyleSheet, ActivityIndicator, ScrollView } from
 import { useLocalSearchParams, useNavigation, router } from 'expo-router'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { readDeckFile, writeDeckFile } from '../../lib/workspace'
-import { readSampleDeck, writeSampleDeck, resetSampleDeck, SAMPLE_DECK_URI } from '../../lib/sampleDeck'
 import {
   SRS_DUE_KEY,
   SRS_INTERVAL_KEY,
@@ -23,7 +22,6 @@ export default function StudyScreen() {
   const insets = useSafeAreaInsets()
   const { deckId } = useLocalSearchParams<{ deckId: string }>()
   const uri = decodeURIComponent(deckId ?? '')
-  const isSample = uri === SAMPLE_DECK_URI
   const navigation = useNavigation()
 
   const [db, setDb] = useState<DatabaseFile | null>(null)
@@ -34,8 +32,7 @@ export default function StudyScreen() {
 
   function load(): void {
     if (!uri) return
-    const read = isSample ? readSampleDeck() : readDeckFile(uri)
-    read
+    readDeckFile(uri)
       .then((file) => {
         setDb(file)
         navigation.setOptions({ title: file.title })
@@ -48,14 +45,6 @@ export default function StudyScreen() {
     load()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [uri])
-
-  async function resetSample(): Promise<void> {
-    await resetSampleDeck()
-    setGradedCount(0)
-    setShowBack(false)
-    setError(null)
-    load()
-  }
 
   async function grade(gotIt: boolean): Promise<void> {
     if (!db || queue.length === 0) return
@@ -88,8 +77,7 @@ export default function StudyScreen() {
     setGradedCount((c) => c + 1)
     setShowBack(false)
     try {
-      if (isSample) await writeSampleDeck(nextDb)
-      else await writeDeckFile(uri, nextDb)
+      await writeDeckFile(uri, nextDb)
     } catch {
       setError('Studied, but saving progress failed — check the folder still has write access.')
     }
@@ -126,11 +114,6 @@ export default function StudyScreen() {
         <Pressable style={styles.button} onPress={() => router.back()}>
           <Text style={styles.buttonText}>Back to decks</Text>
         </Pressable>
-        {isSample && (
-          <Pressable style={styles.linkButton} onPress={resetSample}>
-            <Text style={styles.linkButtonText}>Reset sample deck progress</Text>
-          </Pressable>
-        )}
       </View>
     )
   }
