@@ -3,6 +3,7 @@ import { View, Text, ScrollView, Pressable, StyleSheet, Alert } from 'react-nati
 import { useFocusEffect, useNavigation } from 'expo-router'
 import { loadTrashedFolders, restoreFolder, permanentlyDeleteFolder, type DeckFolder } from '../lib/deckFolders'
 import { useTheme, type Theme } from '../lib/theme'
+import FolderIcon from '../components/FolderIcon'
 
 export default function TrashScreen() {
   const theme = useTheme()
@@ -60,9 +61,12 @@ export default function TrashScreen() {
         {trashed.length === 0 && !loading && <Text style={styles.subtitle}>Trash is empty.</Text>}
         {trashed.map((f) => (
           <View key={f.id} style={styles.row}>
-            <Text style={styles.rowText} numberOfLines={1}>
-              📁 {f.name}
-            </Text>
+            <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+              <FolderIcon color={theme.textMuted} size={20} />
+              <Text style={styles.rowText} numberOfLines={1}>
+                {f.name}
+              </Text>
+            </View>
             <View style={styles.actions}>
               <Pressable onPress={() => restore(f.id)} hitSlop={8}>
                 <Text style={styles.restoreText}>Restore</Text>

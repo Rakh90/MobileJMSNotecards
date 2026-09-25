@@ -13,6 +13,7 @@ import DeckRow from '../components/DeckRow'
 import MoveToFolderModal from '../components/MoveToFolderModal'
 import { useTheme, type Theme } from '../lib/theme'
 import { MetalButton, MetalCard } from '../components/Metal'
+import FolderIcon from '../components/FolderIcon'
 
 export default function DeckListScreen() {
   const theme = useTheme()
@@ -205,7 +206,10 @@ export default function DeckListScreen() {
                           onPress={() => router.push(`/folder/${f.id}?name=${encodeURIComponent(f.name)}`)}
                           onLongPress={() => openFolderMenu(f)}
                         >
-                          <Text style={styles.folderRowText}>📁 {f.name}</Text>
+                          <View style={styles.folderNameRow}>
+                            <FolderIcon color={theme.accent} size={20} />
+                            <Text style={styles.folderRowText}>{f.name}</Text>
+                          </View>
                           <Text style={styles.folderRowCount}>
                             {count} deck{count === 1 ? '' : 's'} ›
                           </Text>
@@ -317,6 +321,7 @@ function makeStyles(theme: Theme) {
       justifyContent: 'space-between',
       padding: 14
     },
+    folderNameRow: { flexDirection: 'row', alignItems: 'center', gap: 10, flexShrink: 1 },
     folderRowText: { fontSize: 15.5, fontWeight: '600', color: theme.text },
     folderRowCount: { fontSize: 13, color: theme.textMuted },
     newFolderRow: { flexDirection: 'row', gap: 8, marginBottom: 12 },
