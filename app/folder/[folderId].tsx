@@ -107,6 +107,14 @@ export default function FolderScreen() {
         refreshControl={<RefreshControl refreshing={loading} onRefresh={() => refresh(workspaceUri)} />}
       >
         {hasAnything && (
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+            <View />
+            <View style={{ flexDirection: 'row', gap: 6, alignItems: 'center' }}>
+              <SortChips inline theme={theme} mode={sortMode} onChange={setSortMode} />
+            </View>
+          </View>
+        )}
+        {hasAnything && (
           <TextInput
             style={styles.searchInput}
             value={search}
@@ -117,7 +125,6 @@ export default function FolderScreen() {
             autoCorrect={false}
           />
         )}
-        {hasAnything && <SortChips theme={theme} mode={sortMode} onChange={setSortMode} />}
 
         {trimmed ? (
           <>
