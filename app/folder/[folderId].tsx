@@ -24,27 +24,16 @@ export default function FolderScreen() {
 
   const folderName = folders.find((f) => f.id === folderId)?.name ?? name ?? 'Folder'
 
-  async function deleteThisFolder(): Promise<void> {
-    await trashFolder(folderId)
-    router.back()
-  }
-
   useEffect(() => {
     navigation.setOptions({
       title: folderName,
       headerRight: () => (
-        <View style={{ flexDirection: 'row', gap: 18 }}>
-          <Pressable onPress={() => setCreatingFolder(true)} hitSlop={10}>
-            <Text style={{ fontSize: 22, color: theme.accent }}>+</Text>
-          </Pressable>
-          <Pressable onPress={deleteThisFolder} hitSlop={10}>
-            <Text style={{ fontSize: 17 }}>🗑</Text>
-          </Pressable>
-        </View>
+        <Pressable onPress={() => setCreatingFolder(true)} hitSlop={10}>
+          <Text style={{ fontSize: 22, color: theme.accent }}>+</Text>
+        </Pressable>
       )
     })
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [folderName, navigation, folderId, theme.accent])
+  }, [folderName, navigation, theme.accent])
 
   function openFolderMenu(f: { id: string; name: string }): void {
     Alert.alert(f.name, undefined, [

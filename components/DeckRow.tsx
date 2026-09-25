@@ -54,8 +54,10 @@ export default function DeckRow({
         onPress={() => router.push(`/study/${encodeURIComponent(uri)}`)}
         onLongPress={onMove ? openMenu : undefined}
       >
-        <Text style={styles.deckTitle}>{file.title}</Text>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 2 }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+          <Text style={[styles.deckTitle, { flexShrink: 1 }]} numberOfLines={1}>
+            {file.title}
+          </Text>
           <Text style={styles.scoreText}>
             <Text style={{ color: theme.success }}>✓{learned}</Text>{' '}
             <Text style={{ color: theme.danger }}>✗{notLearned}</Text>
