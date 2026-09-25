@@ -81,6 +81,14 @@ export default function QuizScreen() {
   const [score, setScore] = useState({ correct: 0, total: 0 })
   const [error, setError] = useState<string | null>(null)
   const flashAnim = useRef(new Animated.Value(0)).current
+  const pop = useRef(new Animated.Value(0.6)).current
+  const quizDone = questions.length > 0 && index >= questions.length
+  useEffect(() => {
+    if (quizDone) {
+      pop.setValue(0.6)
+      Animated.spring(pop, { toValue: 1, friction: 4, tension: 120, useNativeDriver: true }).start()
+    }
+  }, [quizDone, pop])
   const [flashKind, setFlashKind] = useState<'correct' | 'incorrect' | null>(null)
 
   // Records this attempt as the deck's "most recent quiz score" once the run actually finishes -
@@ -240,7 +248,7 @@ export default function QuizScreen() {
     const pct = score.total > 0 ? Math.round((score.correct / score.total) * 100) : 0
     return (
       <View style={[styles.center, { paddingBottom: 24 + insets.bottom }]}>
-        <Text style={styles.title}>Quiz complete 🎉</Text>
+        <Animated.Text style={[styles.title, { transform: [{ scale: pop }] }]}>Quiz complete 🎉</Animated.Text>
         <Text style={styles.subtitle}>
           {score.correct} / {score.total} correct ({pct}%)
         </Text>

@@ -14,6 +14,9 @@ import MoveToFolderModal from '../components/MoveToFolderModal'
 import { useTheme, type Theme } from '../lib/theme'
 import { MetalButton, MetalCard } from '../components/Metal'
 import FolderIcon from '../components/FolderIcon'
+import MenuButton from '../components/MenuButton'
+import SortChips from '../components/SortChips'
+import { useSortMode, sortDecks } from '../lib/deckSort'
 
 export default function DeckListScreen() {
   const theme = useTheme()
@@ -25,6 +28,7 @@ export default function DeckListScreen() {
   const { scores: quizScores } = useQuizScores()
   const [driveConnecting, setDriveConnecting] = useState(false)
   const [search, setSearch] = useState('')
+  const [sortMode, setSortMode] = useSortMode()
   const [creatingFolder, setCreatingFolder] = useState(false)
   const [newFolderName, setNewFolderName] = useState('')
   const [moveTarget, setMoveTarget] = useState<{ uri: string; title: string } | null>(null)
@@ -33,13 +37,24 @@ export default function DeckListScreen() {
     navigation.setOptions({
       headerRight: workspaceUri
         ? () => (
-            <Pressable onPress={() => setCreatingFolder(true)} hitSlop={10}>
-              <Text style={{ fontSize: 22, color: theme.accent }}>+</Text>
-            </Pressable>
+            <MenuButton
+              theme={theme}
+              items={[
+                { label: 'New folder', icon: 'plus', onPress: () => setCreatingFolder(true) },
+                {
+                  label: 'Trash',
+                  icon: 'trash',
+                  badge: trashedCount > 0 ? String(trashedCount) : undefined,
+                  onPress: () => router.push('/trash')
+                }
+              ]}
+              footerItems={[{ label: 'Change deck source', icon: 'swap', onPress: changeFolder }]}
+            />
           )
         : undefined
     })
-  }, [navigation, theme.accent, workspaceUri])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [navigation, theme, workspaceUri, trashedCount])
 
   async function chooseFolder(): Promise<void> {
     const uri = await pickWorkspaceFolder()
@@ -122,10 +137,18 @@ export default function DeckListScreen() {
   const trimmedQuery = search.trim().toLowerCase()
   const searchResults = useMemo(() => {
     if (!trimmedQuery) return []
-    return decks.filter((d) => d.file.title.toLowerCase().includes(trimmedQuery))
-  }, [decks, trimmedQuery])
+    return sortDecks(
+      decks.filter((d) => d.file.title.toLowerCase().includes(trimmedQuery)),
+      sortMode,
+      quizScores
+    )
+  }, [decks, trimmedQuery, sortMode, quizScores])
 
-  const ungroupedDecks = decks.filter((d) => !assignments[d.uri])
+  const ungroupedDecks = sortDecks(
+    decks.filter((d) => !assignments[d.uri]),
+    sortMode,
+    quizScores
+  )
   const showSearchBar = decks.length > 0
 
   return (
@@ -145,6 +168,7 @@ export default function DeckListScreen() {
             autoCorrect={false}
           />
         )}
+        {showSearchBar && <SortChips theme={theme} mode={sortMode} onChange={setSortMode} />}
 
         {trimmedQuery ? (
           <>
@@ -210,8 +234,8 @@ export default function DeckListScreen() {
                             <FolderIcon color={theme.accent} size={20} />
                             <Text style={styles.folderRowText}>{f.name}</Text>
                           </View>
-                          <Text style={styles.folderRowCount}>
-                            {count} deck{count === 1 ? '' : 's'} ›
+                          <Text style={styles.folderRowCount} numberOfLines={1}>
+                            {`${count} deck${count === 1 ? '' : 's'} ›`}
                           </Text>
                         </Pressable>
                       </MetalCard>
@@ -261,18 +285,6 @@ export default function DeckListScreen() {
           </View>
         )}
       </ScrollView>
-      {workspaceUri && (
-        <View style={[styles.bottomLinks, { paddingBottom: 14 + insets.bottom }]}>
-          <Pressable style={styles.linkButton} onPress={changeFolder}>
-            <Text style={styles.linkButtonText}>Change folder</Text>
-          </Pressable>
-          {trashedCount > 0 && (
-            <Pressable style={styles.linkButton} onPress={() => router.push('/trash')}>
-              <Text style={styles.linkButtonText}>🗑 Trash ({trashedCount})</Text>
-            </Pressable>
-          )}
-        </View>
-      )}
       <MoveToFolderModal
         deckTitle={moveTarget?.title ?? null}
         folders={folders}
@@ -323,7 +335,7 @@ function makeStyles(theme: Theme) {
     },
     folderNameRow: { flexDirection: 'row', alignItems: 'center', gap: 10, flexShrink: 1 },
     folderRowText: { fontSize: 15.5, fontWeight: '600', color: theme.text },
-    folderRowCount: { fontSize: 13, color: theme.textMuted },
+    folderRowCount: { fontSize: 13, color: theme.textMuted, flexShrink: 0, marginLeft: 12 },
     newFolderRow: { flexDirection: 'row', gap: 8, marginBottom: 12 },
     newFolderInput: {
       flex: 1,

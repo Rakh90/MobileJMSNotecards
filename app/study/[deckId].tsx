@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react'
-import { View, Text, Pressable, StyleSheet, ActivityIndicator, ScrollView } from 'react-native'
+import { useEffect, useRef, useState } from 'react'
+import { View, Text, Pressable, StyleSheet, ActivityIndicator, ScrollView, Animated } from 'react-native'
 import { useLocalSearchParams, useNavigation, router } from 'expo-router'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { readDeckFile, writeDeckFile } from '../../lib/workspace'
@@ -28,6 +28,18 @@ export default function StudyScreen() {
   const [db, setDb] = useState<DatabaseFile | null>(null)
   const [queue, setQueue] = useState<DatabaseRow[]>([])
   const [showBack, setShowBack] = useState(false)
+  const flip = useRef(new Animated.Value(1)).current
+  const pop = useRef(new Animated.Value(0.6)).current
+
+  // Card flip: squash the card to nothing on its horizontal axis, swap sides at the midpoint,
+  // then expand it back out.
+  function reveal(): void {
+    if (showBack) return
+    Animated.timing(flip, { toValue: 0, duration: 110, useNativeDriver: true }).start(() => {
+      setShowBack(true)
+      Animated.timing(flip, { toValue: 1, duration: 110, useNativeDriver: true }).start()
+    })
+  }
   const [gradedCount, setGradedCount] = useState(0)
   const [error, setError] = useState<string | null>(null)
 
@@ -41,6 +53,14 @@ export default function StudyScreen() {
       })
       .catch(() => setError('Could not open this deck.'))
   }
+
+  const finished = !!db && queue.length === 0
+  useEffect(() => {
+    if (finished) {
+      pop.setValue(0.6)
+      Animated.spring(pop, { toValue: 1, friction: 4, tension: 120, useNativeDriver: true }).start()
+    }
+  }, [finished, pop])
 
   useEffect(() => {
     load()
@@ -104,7 +124,9 @@ export default function StudyScreen() {
   if (queue.length === 0) {
     return (
       <View style={[styles.center, { paddingBottom: 24 + insets.bottom }]}>
-        <Text style={styles.title}>{gradedCount > 0 ? 'All done for now 🎉' : 'Nothing due right now'}</Text>
+        <Animated.Text style={[styles.title, { transform: [{ scale: pop }] }]}>
+          {gradedCount > 0 ? 'All done for now 🎉' : 'Nothing due right now'}
+        </Animated.Text>
         <Text style={styles.subtitle}>
           {gradedCount > 0
             ? `Studied ${gradedCount} card${gradedCount === 1 ? '' : 's'}. Come back later for more.`
@@ -125,17 +147,17 @@ export default function StudyScreen() {
     // hidden), so any tap gets you there. Grading still needs its own two distinct buttons
     // once flipped, so this only fires while !showBack; the grade buttons below claim their
     // own touches as nested Pressables regardless.
-    <Pressable style={styles.container} onPress={() => !showBack && setShowBack(true)}>
+    <Pressable style={styles.container} onPress={reveal}>
       <Text style={styles.progress}>{queue.length} left</Text>
       <ScrollView contentContainerStyle={styles.cardScroll}>
-        <View style={styles.cardStack}>
+        <Animated.View style={[styles.cardStack, { transform: [{ scaleX: flip }] }]}>
           <View style={styles.cardShadowLayer2} />
           <View style={styles.cardShadowLayer1} />
           <MetalCard theme={theme} radius={16} style={styles.card}>
             <Text style={styles.cardText}>{showBack ? back : front}</Text>
             {!showBack && <Text style={styles.tapHint}>Tap anywhere to reveal the other side</Text>}
           </MetalCard>
-        </View>
+        </Animated.View>
       </ScrollView>
       {showBack ? (
         <View style={[styles.gradeRow, { marginBottom: insets.bottom }]}>
@@ -146,7 +168,7 @@ export default function StudyScreen() {
         <MetalButton
           label="Show answer"
           colors={theme.btnGrad}
-          onPress={() => setShowBack(true)}
+          onPress={reveal}
           style={{ marginTop: 16, marginBottom: insets.bottom }}
         />
       )}

@@ -10,6 +10,9 @@ import MoveToFolderModal from '../../components/MoveToFolderModal'
 import { useTheme, type Theme } from '../../lib/theme'
 import { MetalCard } from '../../components/Metal'
 import FolderIcon from '../../components/FolderIcon'
+import MenuButton from '../../components/MenuButton'
+import SortChips from '../../components/SortChips'
+import { useSortMode, sortDecks } from '../../lib/deckSort'
 
 export default function FolderScreen() {
   const theme = useTheme()
@@ -30,12 +33,13 @@ export default function FolderScreen() {
     navigation.setOptions({
       title: folderName,
       headerRight: () => (
-        <Pressable onPress={() => setCreatingFolder(true)} hitSlop={10}>
-          <Text style={{ fontSize: 22, color: theme.accent }}>+</Text>
-        </Pressable>
+        <MenuButton
+          theme={theme}
+          items={[{ label: 'New subfolder', icon: 'plus', onPress: () => setCreatingFolder(true) }]}
+        />
       )
     })
-  }, [folderName, navigation, theme.accent])
+  }, [folderName, navigation, theme])
 
   function openFolderMenu(f: { id: string; name: string }): void {
     Alert.alert(f.name, undefined, [
@@ -52,17 +56,26 @@ export default function FolderScreen() {
   }
 
   const subfolders = folders.filter((f) => f.parentId === folderId)
-  const ownDecks = decks.filter((d) => assignments[d.uri] === folderId)
+  const [sortMode, setSortMode] = useSortMode()
+  const ownDecks = sortDecks(
+    decks.filter((d) => assignments[d.uri] === folderId),
+    sortMode,
+    quizScores
+  )
 
   const trimmed = search.trim().toLowerCase()
   // Search reaches into every nested subfolder, not just decks directly in this one.
   const searchResults = useMemo(() => {
     if (!trimmed) return []
     const idsInTree = new Set([folderId, ...descendantFolderIds(folders, folderId)])
-    return decks.filter(
-      (d) => assignments[d.uri] && idsInTree.has(assignments[d.uri]) && d.file.title.toLowerCase().includes(trimmed)
+    return sortDecks(
+      decks.filter(
+        (d) => assignments[d.uri] && idsInTree.has(assignments[d.uri]) && d.file.title.toLowerCase().includes(trimmed)
+      ),
+      sortMode,
+      quizScores
     )
-  }, [decks, assignments, folders, folderId, trimmed])
+  }, [decks, assignments, folders, folderId, trimmed, sortMode, quizScores])
 
   async function submitNewFolder(): Promise<void> {
     const trimmedName = newFolderName.trim()
@@ -107,6 +120,7 @@ export default function FolderScreen() {
             autoCorrect={false}
           />
         )}
+        {hasAnything && <SortChips theme={theme} mode={sortMode} onChange={setSortMode} />}
 
         {trimmed ? (
           <>
@@ -138,8 +152,8 @@ export default function FolderScreen() {
                       <FolderIcon color={theme.accent} size={20} />
                       <Text style={styles.folderRowText}>{f.name}</Text>
                     </View>
-                    <Text style={styles.folderRowCount}>
-                      {count} deck{count === 1 ? '' : 's'} ›
+                    <Text style={styles.folderRowCount} numberOfLines={1}>
+                      {`${count} deck${count === 1 ? '' : 's'} ›`}
                     </Text>
                   </Pressable>
                 </MetalCard>
@@ -220,7 +234,7 @@ function makeStyles(theme: Theme) {
     },
     folderNameRow: { flexDirection: 'row', alignItems: 'center', gap: 10, flexShrink: 1 },
     folderRowText: { fontSize: 15.5, fontWeight: '600', color: theme.text },
-    folderRowCount: { fontSize: 13, color: theme.textMuted },
+    folderRowCount: { fontSize: 13, color: theme.textMuted, flexShrink: 0, marginLeft: 12 },
     newFolderRow: { flexDirection: 'row', gap: 8, marginBottom: 12 },
     newFolderInput: {
       flex: 1,

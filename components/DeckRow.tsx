@@ -2,6 +2,7 @@ import { View, Text, Pressable, StyleSheet, Alert } from 'react-native'
 import { router } from 'expo-router'
 import { LinearGradient } from 'expo-linear-gradient'
 import { MetalCard, Sheen } from './Metal'
+import ProgressRing from './ProgressRing'
 import { SRS_DUE_KEY, isCardDue } from '../lib/srs'
 import type { Theme } from '../lib/theme'
 import type { DatabaseFile } from '../lib/types'
@@ -38,6 +39,7 @@ export default function DeckRow({
 }) {
   const styles = makeStyles(theme)
   const { learned, notLearned } = learnedCounts(file.rows)
+  const masteryPct = file.rows.length === 0 ? 0 : (learned / file.rows.length) * 100
   // No quiz taken yet reads as 0 out of the deck's card count, rather than hiding the badge.
   const effectiveQuizScore = quizScore ?? { correct: 0, total: file.rows.length }
 
@@ -51,6 +53,7 @@ export default function DeckRow({
 
   return (
     <MetalCard theme={theme} style={styles.deckRow}>
+      <ProgressRing pct={masteryPct} theme={theme} />
       <Pressable
         style={{ flex: 1 }}
         onPress={() => router.push(`/study/${encodeURIComponent(uri)}`)}
