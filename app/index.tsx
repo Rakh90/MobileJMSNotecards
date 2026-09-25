@@ -265,7 +265,7 @@ export default function DeckListScreen() {
                             <FolderIcon color={theme.accent} size={20} />
                             <Text style={styles.folderRowText}>{f.name}</Text>
                           </View>
-                          <Text style={styles.folderRowCount} numberOfLines={1}>
+                          <Text style={styles.folderRowCount}>
                             {`${count} deck${count === 1 ? '' : 's'} ›`}
                           </Text>
                         </Pressable>
@@ -399,7 +399,7 @@ function makeStyles(theme: Theme) {
       marginBottom: 12
     },
     streakText: { color: theme.text, fontSize: 13, fontWeight: '600' },
-    folderRowCount: { fontSize: 13, color: theme.textMuted, flexShrink: 0, marginLeft: 12 },
+    folderRowCount: { fontSize: 13, color: theme.textMuted, flexShrink: 0, marginLeft: 12, paddingRight: 8 },
     newFolderRow: { flexDirection: 'row', gap: 8, marginBottom: 12 },
     newFolderInput: {
       flex: 1,

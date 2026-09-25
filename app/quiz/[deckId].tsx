@@ -254,7 +254,7 @@ export default function QuizScreen() {
         </Text>
         <MetalButton label="Quiz again" colors={theme.btnGrad} onPress={restart} />
         <Pressable style={styles.linkButton} onPress={() => router.back()}>
-          <Text style={styles.linkButtonText} numberOfLines={1}>
+          <Text style={[styles.linkButtonText, { paddingRight: 8 }]}>
             Back to decks
           </Text>
         </Pressable>

@@ -26,7 +26,8 @@ async function saveIndex(index: Record<string, IndexEntry>): Promise<void> {
 }
 
 function fileFor(uri: string): string {
-  return `${DIR}${encodeURIComponent(uri)}.json`
+  // The uri contains ':' and '/', which the file system would read as directories, so flatten it.
+  return `${DIR}${uri.replace(/[^A-Za-z0-9_-]/g, '_')}.json`
 }
 
 async function ensureDir(): Promise<void> {

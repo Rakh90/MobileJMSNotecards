@@ -105,8 +105,13 @@ export async function listFlashcardDecksWithStatus(workspaceUri: string): Promis
     await syncPending()
     const entries = await listDriveDecks(folderId)
     const decks = entries.map((e) => ({ uri: DRIVE_PREFIX + e.fileId, file: e.file }))
-    for (const d of decks) if (!(await isDirty(d.uri))) await writeCached(d.uri, d.file, false)
-    await saveDeckList(workspaceUri, decks.map((d) => d.uri))
+    // Caching is best-effort: a failure here must never stop the live deck list from showing.
+    try {
+      for (const d of decks) if (!(await isDirty(d.uri))) await writeCached(d.uri, d.file, false)
+      await saveDeckList(workspaceUri, decks.map((d) => d.uri))
+    } catch {
+      // ignore
+    }
     return { decks, offline: false }
   } catch (err) {
     const uris = await loadDeckList(workspaceUri)
@@ -149,7 +154,7 @@ export async function readDeckFile(uri: string): Promise<DatabaseFile> {
     }
     try {
       const file = await readDriveFile(uri.slice(DRIVE_PREFIX.length))
-      await writeCached(uri, file, false)
+      writeCached(uri, file, false).catch(() => {})
       return file
     } catch (err) {
       const cached = await readCached(uri)
@@ -165,7 +170,7 @@ export async function writeDeckFile(uri: string, db: DatabaseFile): Promise<void
   if (uri.startsWith(DRIVE_PREFIX)) {
     // Save locally first and flag it, so progress survives being offline; only clear the flag
     // once Drive has actually accepted it.
-    await writeCached(uri, db, true)
+    await writeCached(uri, db, true).catch(() => {})
     try {
       await writeDriveFile(uri.slice(DRIVE_PREFIX.length), db)
       await markClean(uri)
