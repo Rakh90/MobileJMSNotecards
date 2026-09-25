@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useState } from 'react'
-import { View, Text, ScrollView, Pressable, StyleSheet, Alert } from 'react-native'
+import { View, Text, ScrollView, Pressable, StyleSheet } from 'react-native'
 import { useFocusEffect, useNavigation } from 'expo-router'
 import { loadTrashedFolders, restoreFolder, permanentlyDeleteFolder, type DeckFolder } from '../lib/deckFolders'
 import { useTheme, type Theme } from '../lib/theme'
 import FolderIcon from '../components/FolderIcon'
+import ActionSheet from '../components/ActionSheet'
 
 export default function TrashScreen() {
   const theme = useTheme()
@@ -37,23 +38,10 @@ export default function TrashScreen() {
     reload()
   }
 
+  const [foreverTarget, setForeverTarget] = useState<DeckFolder | null>(null)
+
   function confirmDeleteForever(folder: DeckFolder): void {
-    Alert.alert(
-      `Delete "${folder.name}" forever?`,
-      'This cannot be undone. Any decks that were inside it become unassigned rather than deleted — your deck files are never touched.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete forever',
-          style: 'destructive',
-          onPress: async () => {
-            await permanentlyDeleteFolder(folder.id)
-            reload()
-          }
-        }
-      ],
-      { cancelable: true }
-    )
+    setForeverTarget(folder)
   }
 
   return (
@@ -79,6 +67,24 @@ export default function TrashScreen() {
           </View>
         ))}
       </ScrollView>
+      <ActionSheet
+        visible={foreverTarget !== null}
+        theme={theme}
+        title={`Delete "${foreverTarget?.name ?? ''}" forever?`}
+        message="This can't be undone. Any decks that were inside it become unassigned rather than deleted — your deck files are never touched."
+        onClose={() => setForeverTarget(null)}
+        actions={[
+          {
+            label: 'Delete forever',
+            icon: 'trash',
+            destructive: true,
+            onPress: async () => {
+              if (foreverTarget) await permanentlyDeleteFolder(foreverTarget.id)
+              reload()
+            }
+          }
+        ]}
+      />
     </View>
   )
 }

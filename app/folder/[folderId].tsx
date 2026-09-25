@@ -48,6 +48,7 @@ export default function FolderScreen() {
   }, [folderName, navigation, theme])
 
   const [folderMenu, setFolderMenu] = useState<{ id: string; name: string } | null>(null)
+  const [deleteConfirm, setDeleteConfirm] = useState<{ id: string; name: string } | null>(null)
   function openFolderMenu(f: { id: string; name: string }): void {
     setFolderMenu(f)
   }
@@ -226,8 +227,26 @@ export default function FolderScreen() {
             label: 'Delete folder',
             icon: 'trash',
             destructive: true,
+            onPress: () => {
+              const target = folderMenu
+              setTimeout(() => setDeleteConfirm(target), 250)
+            }
+          }
+        ]}
+      />
+      <ActionSheet
+        visible={deleteConfirm !== null}
+        theme={theme}
+        title={`Delete "${deleteConfirm?.name ?? ''}"?`}
+        message="The folder and its subfolders move to Trash, where you can restore them. Your decks aren't deleted."
+        onClose={() => setDeleteConfirm(null)}
+        actions={[
+          {
+            label: 'Move to Trash',
+            icon: 'trash',
+            destructive: true,
             onPress: async () => {
-              if (folderMenu) await trashFolder(folderMenu.id)
+              if (deleteConfirm) await trashFolder(deleteConfirm.id)
               reloadFolders()
             }
           }
