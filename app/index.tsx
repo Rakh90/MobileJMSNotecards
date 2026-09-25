@@ -180,12 +180,13 @@ export default function DeckListScreen() {
           </View>
         )}
         {workspaceUri && (
-          <View style={styles.streakChip}>
-            <Text style={styles.streakText}>
-              {streak.streak > 0
-                ? `🔥 ${streak.streak}-day streak · ${streak.todayCount} card${streak.todayCount === 1 ? '' : 's'} today`
-                : 'Study a card today to start your streak'}
-            </Text>
+          <View style={styles.toolRow}>
+            <View style={styles.streakChip}>
+              <Text style={styles.streakText}>{`🔥 ${streak.streak}-day · ${streak.todayCount} today`}</Text>
+            </View>
+            <View style={{ flexDirection: 'row', gap: 6, alignItems: 'center' }}>
+              {showSearchBar && <SortChips inline theme={theme} mode={sortMode} onChange={setSortMode} />}
+            </View>
           </View>
         )}
         {showSearchBar && (
@@ -199,7 +200,6 @@ export default function DeckListScreen() {
             autoCorrect={false}
           />
         )}
-        {showSearchBar && <SortChips theme={theme} mode={sortMode} onChange={setSortMode} />}
 
         {trimmedQuery ? (
           <>
@@ -390,6 +390,7 @@ function makeStyles(theme: Theme) {
       marginBottom: 12
     },
     offlineText: { color: theme.warning, fontSize: 12.5 },
+    toolRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
     streakChip: {
       alignSelf: 'flex-start',
       borderWidth: 1,
@@ -397,11 +398,10 @@ function makeStyles(theme: Theme) {
       backgroundColor: theme.bgActive,
       borderRadius: 999,
       paddingVertical: 6,
-      paddingHorizontal: 14,
-      marginBottom: 12
+      paddingHorizontal: 14
     },
     streakText: { color: theme.text, fontSize: 13, fontWeight: '600' },
-    folderRowCount: { fontSize: 13, color: theme.textMuted, flexShrink: 0, marginLeft: 12, paddingRight: 8 },
+    folderRowCount: { fontSize: 13, color: theme.textMuted, flexShrink: 0, width: 92, textAlign: 'right' },
     newFolderRow: { flexDirection: 'row', gap: 8, marginBottom: 12 },
     newFolderInput: {
       flex: 1,

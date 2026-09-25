@@ -8,8 +8,8 @@ export type SortMode = 'name' | 'due' | 'score'
 
 export const SORT_LABELS: Record<SortMode, string> = {
   name: 'Name',
-  due: 'Most due',
-  score: 'Lowest score'
+  due: 'Due',
+  score: 'Score'
 }
 
 const KEY = 'jmsnote.sortMode'
