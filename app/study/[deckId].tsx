@@ -14,6 +14,7 @@ import {
   nextSrsState
 } from '../../lib/srs'
 import { useTheme, type Theme } from '../../lib/theme'
+import { MetalButton, MetalCard } from '../../components/Metal'
 import type { DatabaseFile, DatabaseRow } from '../../lib/types'
 
 export default function StudyScreen() {
@@ -87,9 +88,7 @@ export default function StudyScreen() {
     return (
       <View style={styles.center}>
         <Text style={styles.subtitle}>{error}</Text>
-        <Pressable style={styles.button} onPress={() => router.back()}>
-          <Text style={styles.buttonText}>Back</Text>
-        </Pressable>
+        <MetalButton label="Back" colors={theme.btnGrad} onPress={() => router.back()} style={{ marginTop: 16 }} />
       </View>
     )
   }
@@ -111,9 +110,7 @@ export default function StudyScreen() {
             ? `Studied ${gradedCount} card${gradedCount === 1 ? '' : 's'}. Come back later for more.`
             : 'Check back once some cards are due.'}
         </Text>
-        <Pressable style={styles.button} onPress={() => router.back()}>
-          <Text style={styles.buttonText}>Back to decks</Text>
-        </Pressable>
+        <MetalButton label="Back to decks" colors={theme.btnGrad} onPress={() => router.back()} style={{ marginTop: 16 }} />
       </View>
     )
   }
@@ -134,25 +131,24 @@ export default function StudyScreen() {
         <View style={styles.cardStack}>
           <View style={styles.cardShadowLayer2} />
           <View style={styles.cardShadowLayer1} />
-          <View style={styles.card}>
+          <MetalCard theme={theme} radius={16} style={styles.card}>
             <Text style={styles.cardText}>{showBack ? back : front}</Text>
             {!showBack && <Text style={styles.tapHint}>Tap anywhere to reveal the other side</Text>}
-          </View>
+          </MetalCard>
         </View>
       </ScrollView>
       {showBack ? (
         <View style={[styles.gradeRow, { marginBottom: insets.bottom }]}>
-          <Pressable style={[styles.gradeButton, styles.gradeBad]} onPress={() => grade(false)}>
-            <Text style={styles.gradeButtonText}>Still learning</Text>
-          </Pressable>
-          <Pressable style={[styles.gradeButton, styles.gradeGood]} onPress={() => grade(true)}>
-            <Text style={styles.gradeButtonText}>Got it</Text>
-          </Pressable>
+          <MetalButton label="Still learning" colors={theme.dangerGrad} onPress={() => grade(false)} style={{ flex: 1 }} />
+          <MetalButton label="Got it" colors={theme.successGrad} onPress={() => grade(true)} style={{ flex: 1 }} />
         </View>
       ) : (
-        <Pressable style={[styles.button, { marginBottom: insets.bottom }]} onPress={() => setShowBack(true)}>
-          <Text style={styles.buttonText}>Show answer</Text>
-        </Pressable>
+        <MetalButton
+          label="Show answer"
+          colors={theme.btnGrad}
+          onPress={() => setShowBack(true)}
+          style={{ marginTop: 16, marginBottom: insets.bottom }}
+        />
       )}
     </Pressable>
   )
@@ -186,10 +182,6 @@ function makeStyles(theme: Theme) {
       opacity: 0.3
     },
     card: {
-      backgroundColor: theme.cardBg,
-      borderWidth: 1,
-      borderColor: theme.border,
-      borderRadius: 16,
       padding: 28,
       minHeight: 220,
       justifyContent: 'center',

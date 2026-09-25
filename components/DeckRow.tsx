@@ -1,5 +1,7 @@
 import { View, Text, Pressable, StyleSheet, Alert } from 'react-native'
 import { router } from 'expo-router'
+import { LinearGradient } from 'expo-linear-gradient'
+import { MetalCard, Sheen } from './Metal'
 import { SRS_DUE_KEY, isCardDue } from '../lib/srs'
 import type { Theme } from '../lib/theme'
 import type { DatabaseFile } from '../lib/types'
@@ -48,7 +50,7 @@ export default function DeckRow({
   }
 
   return (
-    <View style={styles.deckRow}>
+    <MetalCard theme={theme} style={styles.deckRow}>
       <Pressable
         style={{ flex: 1 }}
         onPress={() => router.push(`/study/${encodeURIComponent(uri)}`)}
@@ -70,9 +72,11 @@ export default function DeckRow({
         </Text>
       </View>
       <Pressable style={styles.quizButton} onPress={() => router.push(`/quiz/${encodeURIComponent(uri)}`)}>
+        <LinearGradient colors={theme.btnGrad} style={StyleSheet.absoluteFill} />
+        <Sheen radius={8} height="50%" />
         <Text style={styles.quizButtonText}>Quiz</Text>
       </Pressable>
-    </View>
+    </MetalCard>
   )
 }
 
@@ -82,10 +86,6 @@ function makeStyles(theme: Theme) {
       flexDirection: 'row',
       alignItems: 'center',
       padding: 14,
-      borderRadius: 10,
-      borderWidth: 1,
-      borderColor: theme.border,
-      backgroundColor: theme.cardBg,
       marginBottom: 10,
       gap: 8
     },
@@ -93,7 +93,7 @@ function makeStyles(theme: Theme) {
     scoreText: { fontSize: 13, fontWeight: '600' },
     quizScoreBadge: { backgroundColor: theme.bgActive, paddingVertical: 4, paddingHorizontal: 10, borderRadius: 999 },
     quizScoreText: { fontWeight: '700', fontSize: 12.5 },
-    quizButton: { borderWidth: 1, borderColor: theme.accent, paddingVertical: 6, paddingHorizontal: 12, borderRadius: 8 },
-    quizButtonText: { color: theme.accent, fontWeight: '600', fontSize: 13 }
+    quizButton: { paddingVertical: 7, paddingHorizontal: 14, borderRadius: 8, overflow: 'hidden' },
+    quizButtonText: { color: '#fff', fontWeight: '600', fontSize: 13 }
   })
 }

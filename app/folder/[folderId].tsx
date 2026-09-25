@@ -8,6 +8,7 @@ import { setDeckFolder, createFolder, trashFolder, descendantFolderIds } from '.
 import DeckRow from '../../components/DeckRow'
 import MoveToFolderModal from '../../components/MoveToFolderModal'
 import { useTheme, type Theme } from '../../lib/theme'
+import { MetalCard } from '../../components/Metal'
 
 export default function FolderScreen() {
   const theme = useTheme()
@@ -126,17 +127,18 @@ export default function FolderScreen() {
               const idsInTree = new Set([f.id, ...descendantFolderIds(folders, f.id)])
               const count = decks.filter((d) => assignments[d.uri] && idsInTree.has(assignments[d.uri])).length
               return (
-                <Pressable
-                  key={f.id}
-                  style={styles.folderRow}
-                  onPress={() => router.push(`/folder/${f.id}?name=${encodeURIComponent(f.name)}`)}
-                  onLongPress={() => openFolderMenu(f)}
-                >
-                  <Text style={styles.folderRowText}>📁 {f.name}</Text>
-                  <Text style={styles.folderRowCount}>
-                    {count} deck{count === 1 ? '' : 's'} ›
-                  </Text>
-                </Pressable>
+                <MetalCard key={f.id} theme={theme} style={{ marginBottom: 10 }}>
+                  <Pressable
+                    style={styles.folderRow}
+                    onPress={() => router.push(`/folder/${f.id}?name=${encodeURIComponent(f.name)}`)}
+                    onLongPress={() => openFolderMenu(f)}
+                  >
+                    <Text style={styles.folderRowText}>📁 {f.name}</Text>
+                    <Text style={styles.folderRowCount}>
+                      {count} deck{count === 1 ? '' : 's'} ›
+                    </Text>
+                  </Pressable>
+                </MetalCard>
               )
             })}
 
@@ -210,12 +212,7 @@ function makeStyles(theme: Theme) {
       flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'space-between',
-      padding: 14,
-      borderRadius: 10,
-      borderWidth: 1,
-      borderColor: theme.border,
-      backgroundColor: theme.cardBg,
-      marginBottom: 10
+      padding: 14
     },
     folderRowText: { fontSize: 15.5, fontWeight: '600', color: theme.text },
     folderRowCount: { fontSize: 13, color: theme.textMuted },

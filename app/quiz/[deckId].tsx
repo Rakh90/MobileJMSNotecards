@@ -15,6 +15,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { readDeckFile } from '../../lib/workspace'
 import { loadQuizSettings, saveQuizSettings, DEFAULT_QUIZ_SETTINGS, type QuizSettings, type PromptSide } from '../../lib/quizSettings'
 import { saveQuizScore } from '../../lib/quizScores'
+import { MetalButton, MetalCard } from '../../components/Metal'
 import { useTheme, type Theme } from '../../lib/theme'
 import type { DatabaseFile, DatabaseRow } from '../../lib/types'
 
@@ -206,9 +207,7 @@ export default function QuizScreen() {
             />
           ))}
         </View>
-        <Pressable style={styles.button} onPress={() => setSettingsOpen(false)}>
-          <Text style={styles.buttonText}>Done</Text>
-        </Pressable>
+        <MetalButton label="Done" colors={theme.btnGrad} onPress={() => setSettingsOpen(false)} />
       </View>
     </View>
   )
@@ -217,9 +216,7 @@ export default function QuizScreen() {
     return (
       <View style={styles.center}>
         <Text style={styles.subtitle}>{error}</Text>
-        <Pressable style={styles.button} onPress={() => router.back()}>
-          <Text style={styles.buttonText}>Back</Text>
-        </Pressable>
+        <MetalButton label="Back" colors={theme.btnGrad} onPress={() => router.back()} />
       </View>
     )
   }
@@ -230,9 +227,7 @@ export default function QuizScreen() {
         {db ? (
           <>
             <Text style={styles.subtitle}>Need at least one card with both sides filled in to quiz.</Text>
-            <Pressable style={styles.button} onPress={() => router.back()}>
-              <Text style={styles.buttonText}>Back to decks</Text>
-            </Pressable>
+            <MetalButton label="Back to decks" colors={theme.btnGrad} onPress={() => router.back()} />
           </>
         ) : (
           <ActivityIndicator color={theme.accent} />
@@ -249,9 +244,7 @@ export default function QuizScreen() {
         <Text style={styles.subtitle}>
           {score.correct} / {score.total} correct ({pct}%)
         </Text>
-        <Pressable style={styles.button} onPress={restart}>
-          <Text style={styles.buttonText}>Quiz again</Text>
-        </Pressable>
+        <MetalButton label="Quiz again" colors={theme.btnGrad} onPress={restart} />
         <Pressable style={styles.linkButton} onPress={() => router.back()}>
           <Text style={styles.linkButtonText} numberOfLines={1}>
             Back to decks
@@ -274,7 +267,7 @@ export default function QuizScreen() {
         <View style={styles.cardStack}>
           <View style={styles.cardShadowLayer2} />
           <View style={styles.cardShadowLayer1} />
-          <View style={styles.card}>
+          <MetalCard theme={theme} radius={16} style={styles.card}>
             <Animated.View
               pointerEvents="none"
               style={[
@@ -286,7 +279,7 @@ export default function QuizScreen() {
               ]}
             />
             <Text style={styles.cardText}>{question.promptText}</Text>
-          </View>
+          </MetalCard>
         </View>
 
         {settings.difficulty === 'easy' ? (
@@ -346,13 +339,13 @@ export default function QuizScreen() {
 
       <View style={{ marginBottom: insets.bottom }}>
         {settings.difficulty === 'hard' && !feedback ? (
-          <Pressable style={styles.button} onPress={submitTyped}>
-            <Text style={styles.buttonText}>Check</Text>
-          </Pressable>
+          <MetalButton label="Check" colors={theme.btnGrad} onPress={submitTyped} />
         ) : feedback ? (
-          <Pressable style={styles.button} onPress={nextQuestion}>
-            <Text style={styles.buttonText}>{index + 1 < questions.length ? 'Next' : 'See results'}</Text>
-          </Pressable>
+          <MetalButton
+            label={index + 1 < questions.length ? 'Next' : 'See results'}
+            colors={theme.btnGrad}
+            onPress={nextQuestion}
+          />
         ) : null}
       </View>
       {settingsModal}
@@ -420,10 +413,6 @@ function makeStyles(theme: Theme) {
       opacity: 0.3
     },
     card: {
-      backgroundColor: theme.cardBg,
-      borderWidth: 1,
-      borderColor: theme.border,
-      borderRadius: 16,
       padding: 28,
       minHeight: 160,
       justifyContent: 'center',
