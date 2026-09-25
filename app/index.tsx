@@ -16,6 +16,7 @@ import { MetalButton, MetalCard } from '../components/Metal'
 import FolderIcon from '../components/FolderIcon'
 import MenuButton from '../components/MenuButton'
 import SortChips from '../components/SortChips'
+import { useStreak } from '../lib/streak'
 import { useSortMode, sortDecks } from '../lib/deckSort'
 
 export default function DeckListScreen() {
@@ -28,6 +29,7 @@ export default function DeckListScreen() {
   const { scores: quizScores } = useQuizScores()
   const [driveConnecting, setDriveConnecting] = useState(false)
   const [search, setSearch] = useState('')
+  const streak = useStreak()
   const [sortMode, setSortMode] = useSortMode()
   const [creatingFolder, setCreatingFolder] = useState(false)
   const [newFolderName, setNewFolderName] = useState('')
@@ -157,6 +159,15 @@ export default function DeckListScreen() {
         contentContainerStyle={styles.list}
         refreshControl={<RefreshControl refreshing={loading} onRefresh={() => refresh(workspaceUri)} />}
       >
+        {workspaceUri && (
+          <View style={styles.streakChip}>
+            <Text style={styles.streakText}>
+              {streak.streak > 0
+                ? `🔥 ${streak.streak}-day streak · ${streak.todayCount} card${streak.todayCount === 1 ? '' : 's'} today`
+                : 'Study a card today to start your streak'}
+            </Text>
+          </View>
+        )}
         {showSearchBar && (
           <TextInput
             style={styles.searchInput}
@@ -335,6 +346,17 @@ function makeStyles(theme: Theme) {
     },
     folderNameRow: { flexDirection: 'row', alignItems: 'center', gap: 10, flexShrink: 1 },
     folderRowText: { fontSize: 15.5, fontWeight: '600', color: theme.text },
+    streakChip: {
+      alignSelf: 'flex-start',
+      borderWidth: 1,
+      borderColor: theme.borderAccent,
+      backgroundColor: theme.bgActive,
+      borderRadius: 999,
+      paddingVertical: 6,
+      paddingHorizontal: 14,
+      marginBottom: 12
+    },
+    streakText: { color: theme.text, fontSize: 13, fontWeight: '600' },
     folderRowCount: { fontSize: 13, color: theme.textMuted, flexShrink: 0, marginLeft: 12 },
     newFolderRow: { flexDirection: 'row', gap: 8, marginBottom: 12 },
     newFolderInput: {

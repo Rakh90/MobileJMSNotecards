@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { View, Text, Pressable, StyleSheet, ActivityIndicator, ScrollView, Animated } from 'react-native'
+import { View, Text, Pressable, StyleSheet, ActivityIndicator, ScrollView, Animated, PanResponder } from 'react-native'
 import { useLocalSearchParams, useNavigation, router } from 'expo-router'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { readDeckFile, writeDeckFile } from '../../lib/workspace'
@@ -15,6 +15,7 @@ import {
 } from '../../lib/srs'
 import { useTheme, type Theme } from '../../lib/theme'
 import { MetalButton, MetalCard } from '../../components/Metal'
+import { recordGrade, restoreStreak, type StreakState } from '../../lib/streak'
 import type { DatabaseFile, DatabaseRow } from '../../lib/types'
 
 export default function StudyScreen() {
@@ -42,6 +43,33 @@ export default function StudyScreen() {
   }
   const [gradedCount, setGradedCount] = useState(0)
   const [error, setError] = useState<string | null>(null)
+  const [lastGrade, setLastGrade] = useState<{ prevRow: DatabaseRow; prevStreak: StreakState } | null>(null)
+  const swipeX = useRef(new Animated.Value(0)).current
+  const gradeRef = useRef<(gotIt: boolean) => Promise<void>>(async () => {})
+  const showBackRef = useRef(false)
+  showBackRef.current = showBack
+
+  // Swipe right = Got it, left = Still learning, only once the answer is showing. The buttons
+  // below do the same thing, so this is purely a shortcut.
+  const panResponder = useRef(
+    PanResponder.create({
+      onMoveShouldSetPanResponder: (_, g) =>
+        showBackRef.current && Math.abs(g.dx) > 12 && Math.abs(g.dx) > Math.abs(g.dy) * 1.5,
+      onPanResponderMove: Animated.event([null, { dx: swipeX }], { useNativeDriver: false }),
+      onPanResponderRelease: (_, g) => {
+        if (Math.abs(g.dx) > 100) {
+          const gotIt = g.dx > 0
+          Animated.timing(swipeX, { toValue: gotIt ? 500 : -500, duration: 140, useNativeDriver: false }).start(() => {
+            swipeX.setValue(0)
+            gradeRef.current(gotIt)
+          })
+        } else {
+          Animated.spring(swipeX, { toValue: 0, useNativeDriver: false }).start()
+        }
+      },
+      onPanResponderTerminate: () => Animated.spring(swipeX, { toValue: 0, useNativeDriver: false }).start()
+    })
+  ).current
 
   function load(): void {
     if (!uri) return
@@ -97,10 +125,29 @@ export default function StudyScreen() {
     setQueue((q) => q.slice(1))
     setGradedCount((c) => c + 1)
     setShowBack(false)
+    recordGrade().then((prevStreak) => setLastGrade({ prevRow: current, prevStreak }))
     try {
       await writeDeckFile(uri, nextDb)
     } catch {
       setError('Studied, but saving progress failed — check the folder still has write access.')
+    }
+  }
+  gradeRef.current = grade
+
+  async function undo(): Promise<void> {
+    if (!lastGrade || !db) return
+    const { prevRow, prevStreak } = lastGrade
+    const nextDb: DatabaseFile = { ...db, rows: db.rows.map((r) => (r.id === prevRow.id ? prevRow : r)) }
+    setDb(nextDb)
+    setQueue((q) => [prevRow, ...q])
+    setGradedCount((c) => Math.max(0, c - 1))
+    setShowBack(false)
+    setLastGrade(null)
+    restoreStreak(prevStreak)
+    try {
+      await writeDeckFile(uri, nextDb)
+    } catch {
+      setError('Undo worked here, but saving it failed — check the folder still has write access.')
     }
   }
 
@@ -133,6 +180,11 @@ export default function StudyScreen() {
             : 'Check back once some cards are due.'}
         </Text>
         <MetalButton label="Back to decks" colors={theme.btnGrad} onPress={() => router.back()} style={{ marginTop: 16 }} />
+        {lastGrade && (
+          <Pressable onPress={undo} style={{ padding: 12 }}>
+            <Text style={{ color: theme.accent, fontSize: 13.5 }}>↶ Undo last grade</Text>
+          </Pressable>
+        )}
       </View>
     )
   }
@@ -148,15 +200,47 @@ export default function StudyScreen() {
     // once flipped, so this only fires while !showBack; the grade buttons below claim their
     // own touches as nested Pressables regardless.
     <Pressable style={styles.container} onPress={reveal}>
-      <Text style={styles.progress}>{queue.length} left</Text>
+      <View style={{ flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 16, marginBottom: 8 }}>
+        <Text style={[styles.progress, { marginBottom: 0 }]}>{queue.length} left</Text>
+        {lastGrade && (
+          <Pressable onPress={undo} hitSlop={10}>
+            <Text style={{ color: theme.accent, fontSize: 13, fontWeight: '600' }}>↶ Undo</Text>
+          </Pressable>
+        )}
+      </View>
       <ScrollView contentContainerStyle={styles.cardScroll}>
         <Animated.View style={[styles.cardStack, { transform: [{ scaleX: flip }] }]}>
           <View style={styles.cardShadowLayer2} />
           <View style={styles.cardShadowLayer1} />
-          <MetalCard theme={theme} radius={16} style={styles.card}>
-            <Text style={styles.cardText}>{showBack ? back : front}</Text>
-            {!showBack && <Text style={styles.tapHint}>Tap anywhere to reveal the other side</Text>}
-          </MetalCard>
+          <Animated.View
+            {...panResponder.panHandlers}
+            style={{
+              transform: [
+                { translateX: swipeX },
+                { rotate: swipeX.interpolate({ inputRange: [-300, 0, 300], outputRange: ['-8deg', '0deg', '8deg'] }) }
+              ]
+            }}
+          >
+            <MetalCard theme={theme} radius={16} style={styles.card}>
+              <Text style={styles.cardText}>{showBack ? back : front}</Text>
+              {!showBack && <Text style={styles.tapHint}>Tap anywhere to reveal the other side</Text>}
+              {showBack && <Text style={styles.tapHint}>Swipe right for Got it, left for Still learning</Text>}
+            </MetalCard>
+            <Animated.View
+              pointerEvents="none"
+              style={[
+                styles.swipeTint,
+                { backgroundColor: theme.success, opacity: swipeX.interpolate({ inputRange: [0, 150], outputRange: [0, 0.35], extrapolate: 'clamp' }) }
+              ]}
+            />
+            <Animated.View
+              pointerEvents="none"
+              style={[
+                styles.swipeTint,
+                { backgroundColor: theme.danger, opacity: swipeX.interpolate({ inputRange: [-150, 0], outputRange: [0.35, 0], extrapolate: 'clamp' }) }
+              ]}
+            />
+          </Animated.View>
         </Animated.View>
       </ScrollView>
       {showBack ? (
@@ -215,6 +299,7 @@ function makeStyles(theme: Theme) {
       shadowRadius: 10
     },
     cardText: { fontSize: 21, textAlign: 'center', color: theme.text, fontWeight: '500' },
+    swipeTint: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, borderRadius: 16 },
     tapHint: { fontSize: 12, color: theme.textMuted, marginTop: 18 },
     title: { fontSize: 20, fontWeight: '700', textAlign: 'center', color: theme.text },
     subtitle: { fontSize: 14, color: theme.textMuted, textAlign: 'center' },
