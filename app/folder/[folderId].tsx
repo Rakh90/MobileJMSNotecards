@@ -11,6 +11,7 @@ import { useTheme, type Theme } from '../../lib/theme'
 import { MetalCard } from '../../components/Metal'
 import FolderIcon from '../../components/FolderIcon'
 import MenuButton from '../../components/MenuButton'
+import ActionSheet from '../../components/ActionSheet'
 import StudyPickerModal from '../../components/StudyPickerModal'
 import SortChips from '../../components/SortChips'
 import { useSortMode, sortDecks } from '../../lib/deckSort'
@@ -46,18 +47,9 @@ export default function FolderScreen() {
     })
   }, [folderName, navigation, theme])
 
+  const [folderMenu, setFolderMenu] = useState<{ id: string; name: string } | null>(null)
   function openFolderMenu(f: { id: string; name: string }): void {
-    Alert.alert(f.name, undefined, [
-      {
-        text: 'Delete folder',
-        style: 'destructive',
-        onPress: async () => {
-          await trashFolder(f.id)
-          reloadFolders()
-        }
-      },
-      { text: 'Cancel', style: 'cancel' }
-    ])
+    setFolderMenu(f)
   }
 
   const subfolders = folders.filter((f) => f.parentId === folderId)
@@ -216,6 +208,23 @@ export default function FolderScreen() {
           setStudyPickerOpen(false)
           router.push(`/study/mixed?uris=${encodeURIComponent(JSON.stringify(uris))}&mode=${mode}`)
         }}
+      />
+      <ActionSheet
+        visible={folderMenu !== null}
+        theme={theme}
+        title={folderMenu?.name ?? ''}
+        onClose={() => setFolderMenu(null)}
+        actions={[
+          {
+            label: 'Delete folder',
+            icon: 'trash',
+            destructive: true,
+            onPress: async () => {
+              if (folderMenu) await trashFolder(folderMenu.id)
+              reloadFolders()
+            }
+          }
+        ]}
       />
       <MoveToFolderModal
         deckTitle={moveTarget?.title ?? null}

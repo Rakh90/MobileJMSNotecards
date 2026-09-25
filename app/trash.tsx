@@ -51,7 +51,8 @@ export default function TrashScreen() {
             reload()
           }
         }
-      ]
+      ],
+      { cancelable: true }
     )
   }
 

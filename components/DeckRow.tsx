@@ -1,8 +1,10 @@
-import { View, Text, Pressable, StyleSheet, Alert } from 'react-native'
+import { useState } from 'react'
+import { View, Text, Pressable, StyleSheet } from 'react-native'
 import { router } from 'expo-router'
 import { LinearGradient } from 'expo-linear-gradient'
 import { MetalCard, Sheen } from './Metal'
 import ProgressRing from './ProgressRing'
+import ActionSheet from './ActionSheet'
 import { SRS_DUE_KEY, isCardDue } from '../lib/srs'
 import type { Theme } from '../lib/theme'
 import type { DatabaseFile } from '../lib/types'
@@ -46,37 +48,16 @@ export default function DeckRow({
   // No quiz taken yet reads as 0 out of the deck's card count, rather than hiding the badge.
   const effectiveQuizScore = quizScore ?? { correct: 0, total: file.rows.length }
 
-  function openMenu(): void {
-    Alert.alert(file.title, undefined, [
-      { text: 'Study all cards', onPress: () => router.push(`/study/${encodeURIComponent(uri)}?mode=all`) },
-      { text: 'Study weak cards', onPress: () => router.push(`/study/${encodeURIComponent(uri)}?mode=weak`) },
-      {
-        text: 'Reset study progress…',
-        onPress: () =>
-          Alert.alert('Reset study progress?', 'Every card in this deck becomes due again and its scores are cleared.', [
-            { text: 'Cancel', style: 'cancel' },
-            {
-              text: 'Reset',
-              style: 'destructive',
-              onPress: async () => {
-                await resetDeckProgress(uri)
-                onChanged?.()
-              }
-            }
-          ])
-      },
-      ...(onMove ? [{ text: 'Move to folder…', onPress: () => onMove(uri, file.title) }] : []),
-      { text: 'Cancel', style: 'cancel' as const }
-    ])
-  }
+  const [sheet, setSheet] = useState<'menu' | 'reset' | null>(null)
 
   return (
+    <>
     <MetalCard theme={theme} style={styles.deckRow}>
       <ProgressRing pct={masteryPct} theme={theme} />
       <Pressable
         style={{ flex: 1 }}
         onPress={() => router.push(`/study/${encodeURIComponent(uri)}`)}
-        onLongPress={openMenu}
+        onLongPress={() => setSheet('menu')}
       >
         <Text style={styles.deckTitle} numberOfLines={1}>
           {file.title}
@@ -98,6 +79,37 @@ export default function DeckRow({
         </Text>
       </View>
     </MetalCard>
+    <ActionSheet
+      visible={sheet === 'menu'}
+      theme={theme}
+      title={file.title}
+      onClose={() => setSheet(null)}
+      actions={[
+        { label: 'Study all cards', icon: 'study', onPress: () => router.push(`/study/${encodeURIComponent(uri)}?mode=all`) },
+        { label: 'Study weak cards', icon: 'bolt', onPress: () => router.push(`/study/${encodeURIComponent(uri)}?mode=weak`) },
+        ...(onMove ? [{ label: 'Move to folder…', icon: 'folder' as const, onPress: () => onMove(uri, file.title) }] : []),
+        { label: 'Reset study progress…', icon: 'swap', destructive: true, onPress: () => setTimeout(() => setSheet('reset'), 250) }
+      ]}
+    />
+    <ActionSheet
+      visible={sheet === 'reset'}
+      theme={theme}
+      title="Reset study progress?"
+      message="Every card in this deck becomes due again and its scores are cleared."
+      onClose={() => setSheet(null)}
+      actions={[
+        {
+          label: 'Reset',
+          icon: 'swap',
+          destructive: true,
+          onPress: async () => {
+            await resetDeckProgress(uri)
+            onChanged?.()
+          }
+        }
+      ]}
+    />
+    </>
   )
 }
 
