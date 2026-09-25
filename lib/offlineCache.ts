@@ -92,7 +92,11 @@ export function mergeProgress(remote: DatabaseFile, local: DatabaseFile): Databa
     const remoteAt = String(r.properties[SRS_LAST_KEY] ?? '')
     if (localAt <= remoteAt) return r
     const properties = { ...r.properties }
-    for (const k of SRS_KEYS) if (k in l.properties) properties[k] = l.properties[k]
+    // A key missing locally means it was cleared (a progress reset), so clear it here too.
+    for (const k of SRS_KEYS) {
+      if (k in l.properties) properties[k] = l.properties[k]
+      else delete properties[k]
+    }
     return { ...r, properties }
   })
   return { ...remote, rows }

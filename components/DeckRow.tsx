@@ -7,6 +7,7 @@ import { SRS_DUE_KEY, isCardDue } from '../lib/srs'
 import type { Theme } from '../lib/theme'
 import type { DatabaseFile } from '../lib/types'
 import type { QuizScore } from '../lib/quizScores'
+import { resetDeckProgress } from '../lib/resetProgress'
 
 // "Learned" = not currently due, i.e. it's been graded correct at least once in study mode and
 // is scheduled for a future review rather than sitting in the immediate queue.
@@ -28,7 +29,8 @@ export default function DeckRow({
   file,
   theme,
   quizScore,
-  onMove
+  onMove,
+  onChanged
 }: {
   uri: string
   file: DatabaseFile
@@ -36,6 +38,7 @@ export default function DeckRow({
   quizScore?: QuizScore
   // Omitted for the bundled sample deck, which isn't a real file and can't be organized.
   onMove?: (uri: string, title: string) => void
+  onChanged?: () => void
 }) {
   const styles = makeStyles(theme)
   const { learned, notLearned } = learnedCounts(file.rows)
@@ -45,7 +48,23 @@ export default function DeckRow({
 
   function openMenu(): void {
     Alert.alert(file.title, undefined, [
+      { text: 'Study all cards', onPress: () => router.push(`/study/${encodeURIComponent(uri)}?mode=all`) },
       { text: 'Study weak cards', onPress: () => router.push(`/study/${encodeURIComponent(uri)}?mode=weak`) },
+      {
+        text: 'Reset study progress…',
+        onPress: () =>
+          Alert.alert('Reset study progress?', 'Every card in this deck becomes due again and its scores are cleared.', [
+            { text: 'Cancel', style: 'cancel' },
+            {
+              text: 'Reset',
+              style: 'destructive',
+              onPress: async () => {
+                await resetDeckProgress(uri)
+                onChanged?.()
+              }
+            }
+          ])
+      },
       ...(onMove ? [{ text: 'Move to folder…', onPress: () => onMove(uri, file.title) }] : []),
       { text: 'Cancel', style: 'cancel' as const }
     ])

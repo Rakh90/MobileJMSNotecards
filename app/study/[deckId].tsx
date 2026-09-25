@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { View, Text, Pressable, StyleSheet, ActivityIndicator, ScrollView, Animated, PanResponder } from 'react-native'
+import { View, Text, Pressable, StyleSheet, ActivityIndicator, Animated, PanResponder } from 'react-native'
 import { useLocalSearchParams, useNavigation, router } from 'expo-router'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { readDeckFile, writeDeckFile } from '../../lib/workspace'
@@ -34,6 +34,7 @@ export default function StudyScreen() {
   const { deckId, uris: urisParam, mode } = useLocalSearchParams<{ deckId: string; uris?: string; mode?: string }>()
   const uris: string[] = urisParam ? JSON.parse(urisParam) : [decodeURIComponent(deckId ?? '')]
   const weakMode = mode === 'weak'
+  const allMode = mode === 'all'
   const isMixed = uris.length > 1
   const sessionKey = uris.join('|') + '#' + (mode ?? 'due')
   const navigation = useNavigation()
@@ -42,6 +43,7 @@ export default function StudyScreen() {
   const [queue, setQueue] = useState<StudyItem[]>([])
   const [showBack, setShowBack] = useState(false)
   const flip = useRef(new Animated.Value(1)).current
+  const revealRef = useRef<() => void>(() => {})
   const pop = useRef(new Animated.Value(0.6)).current
 
   // Card flip: squash the card to nothing on its horizontal axis, swap sides at the midpoint,
@@ -53,6 +55,7 @@ export default function StudyScreen() {
       Animated.timing(flip, { toValue: 1, duration: 110, useNativeDriver: true }).start()
     })
   }
+  revealRef.current = reveal
   const [gradedCount, setGradedCount] = useState(0)
   const [error, setError] = useState<string | null>(null)
   const [lastGrade, setLastGrade] = useState<{ uri: string; prevRow: DatabaseRow; prevStreak: StreakState } | null>(null)
@@ -65,10 +68,18 @@ export default function StudyScreen() {
   // below do the same thing, so this is purely a shortcut.
   const panResponder = useRef(
     PanResponder.create({
-      onMoveShouldSetPanResponder: (_, g) =>
-        showBackRef.current && Math.abs(g.dx) > 12 && Math.abs(g.dx) > Math.abs(g.dy) * 1.5,
-      onPanResponderMove: Animated.event([null, { dx: swipeX }], { useNativeDriver: false }),
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: () => true,
+      onPanResponderMove: (_, g) => {
+        if (showBackRef.current) swipeX.setValue(g.dx)
+      },
       onPanResponderRelease: (_, g) => {
+        // A touch that barely moved is a tap: flip the card. Anything else is a swipe.
+        if (Math.abs(g.dx) < 10 && Math.abs(g.dy) < 10) {
+          revealRef.current()
+          return
+        }
+        if (!showBackRef.current) return
         if (Math.abs(g.dx) > 100) {
           const gotIt = g.dx > 0
           Animated.timing(swipeX, { toValue: gotIt ? 500 : -500, duration: 140, useNativeDriver: false }).start(() => {
@@ -89,10 +100,13 @@ export default function StudyScreen() {
         const map = Object.fromEntries(entries)
         setDbs(map)
         navigation.setOptions({
-          title: isMixed ? (weakMode ? 'Weak cards' : 'Mixed study') : weakMode ? `Weak: ${entries[0][1].title}` : entries[0][1].title
+          title: isMixed
+            ? weakMode ? 'Weak cards' : allMode ? 'Mixed practice' : 'Mixed study'
+            : weakMode ? `Weak: ${entries[0][1].title}` : allMode ? `Practice: ${entries[0][1].title}` : entries[0][1].title
         })
         const all: StudyItem[] = entries.flatMap(([u, f]) => f.rows.map((row) => ({ uri: u, row })))
         if (weakMode) setQueue(weakestFirst(all))
+        else if (allMode) setQueue(shuffled(all))
         else {
           const due = all.filter((i) => isCardDue(i.row.properties[SRS_DUE_KEY]))
           setQueue(isMixed ? shuffled(due) : due)
@@ -223,7 +237,7 @@ export default function StudyScreen() {
     // hidden), so any tap gets you there. Grading still needs its own two distinct buttons
     // once flipped, so this only fires while !showBack; the grade buttons below claim their
     // own touches as nested Pressables regardless.
-    <Pressable style={styles.container} onPress={reveal}>
+    <View style={styles.container} {...panResponder.panHandlers}>
       <View style={{ flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 16, marginBottom: 8 }}>
         <Text style={[styles.progress, { marginBottom: 0 }]}>{queue.length} left</Text>
         {lastGrade && (
@@ -232,12 +246,11 @@ export default function StudyScreen() {
           </Pressable>
         )}
       </View>
-      <ScrollView contentContainerStyle={styles.cardScroll}>
+      <View style={[styles.cardScroll, { flex: 1 }]}>
         <Animated.View style={[styles.cardStack, { transform: [{ scaleX: flip }] }]}>
           <View style={styles.cardShadowLayer2} />
           <View style={styles.cardShadowLayer1} />
           <Animated.View
-            {...panResponder.panHandlers}
             style={{
               transform: [
                 { translateX: swipeX },
@@ -247,8 +260,6 @@ export default function StudyScreen() {
           >
             <MetalCard theme={theme} radius={16} style={styles.card}>
               <Text style={styles.cardText}>{showBack ? back : front}</Text>
-              {!showBack && <Text style={styles.tapHint}>Tap anywhere to reveal the other side</Text>}
-              {showBack && <Text style={styles.tapHint}>Swipe right for Got it, left for Still learning</Text>}
             </MetalCard>
             <Animated.View
               pointerEvents="none"
@@ -266,7 +277,7 @@ export default function StudyScreen() {
             />
           </Animated.View>
         </Animated.View>
-      </ScrollView>
+      </View>
       {showBack ? (
         <View style={[styles.gradeRow, { marginBottom: insets.bottom }]}>
           <MetalButton label="Still learning" colors={theme.dangerGrad} onPress={() => grade(false)} style={{ flex: 1 }} />
@@ -280,7 +291,7 @@ export default function StudyScreen() {
           style={{ marginTop: 16, marginBottom: insets.bottom }}
         />
       )}
-    </Pressable>
+    </View>
   )
 }
 

@@ -6,7 +6,7 @@ import type { DeckEntry } from '../lib/workspace'
 import { MetalButton } from './Metal'
 import FolderIcon from './FolderIcon'
 
-export type StudyMode = 'due' | 'weak'
+export type StudyMode = 'due' | 'weak' | 'all'
 const UNGROUPED = '__ungrouped'
 
 interface Node {
@@ -97,14 +97,14 @@ export default function StudyPickerModal({
           </ScrollView>
 
           <View style={styles.modeRow}>
-            {(['due', 'weak'] as const).map((m) => (
+            {(['due', 'weak', 'all'] as const).map((m) => (
               <Pressable
                 key={m}
                 onPress={() => setMode(m)}
                 style={[styles.chip, mode === m && { borderColor: theme.accent, backgroundColor: theme.bgActive }]}
               >
                 <Text style={{ color: mode === m ? theme.accent : theme.textMuted, fontWeight: mode === m ? '600' : '400', fontSize: 13 }}>
-                  {m === 'due' ? 'Due cards' : 'Weak cards'}
+                  {m === 'due' ? 'Due cards' : m === 'weak' ? 'Weak cards' : 'All cards'}
                 </Text>
               </Pressable>
             ))}

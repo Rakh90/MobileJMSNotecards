@@ -137,6 +137,7 @@ export default function FolderScreen() {
                 theme={theme}
                 quizScore={quizScores[d.uri]}
                 onMove={(uri, title) => setMoveTarget({ uri, title })}
+                onChanged={() => refresh(workspaceUri)}
               />
             ))}
             {searchResults.length === 0 && <Text style={styles.subtitle}>No decks match "{search.trim()}".</Text>}
@@ -191,6 +192,7 @@ export default function FolderScreen() {
                 theme={theme}
                 quizScore={quizScores[d.uri]}
                 onMove={(uri, title) => setMoveTarget({ uri, title })}
+                onChanged={() => refresh(workspaceUri)}
               />
             ))}
 

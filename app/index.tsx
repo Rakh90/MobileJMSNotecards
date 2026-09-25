@@ -211,6 +211,7 @@ export default function DeckListScreen() {
                 theme={theme}
                 quizScore={quizScores[d.uri]}
                 onMove={(uri, title) => setMoveTarget({ uri, title })}
+                onChanged={() => refresh(workspaceUri)}
               />
             ))}
             {searchResults.length === 0 && (
@@ -299,6 +300,7 @@ export default function DeckListScreen() {
                     theme={theme}
                     quizScore={quizScores[d.uri]}
                     onMove={(uri, title) => setMoveTarget({ uri, title })}
+                onChanged={() => refresh(workspaceUri)}
                   />
                 ))}
 
