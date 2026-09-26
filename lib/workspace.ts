@@ -68,8 +68,43 @@ export interface DeckEntry {
 // main/workspace.ts) — only databases/ matters here, and only the ones with a flashcards view.
 // Pushes any study progress that was saved offline up to Drive, merging per card (newest grade
 // wins). Anything that fails stays queued for the next attempt.
+// Drive saves in flight, one queue per deck. Saving a deck on every graded card can start a new
+// write before the last one has finished; letting them race meant an older snapshot could land
+// last and undo newer progress. Instead each deck keeps only its newest snapshot and writes them
+// strictly one at a time.
+const writers = new Map<string, { latest: DatabaseFile | null; running: Promise<void> | null }>()
+
+async function queueDriveWrite(uri: string, db: DatabaseFile): Promise<void> {
+  let w = writers.get(uri)
+  if (!w) {
+    w = { latest: null, running: null }
+    writers.set(uri, w)
+  }
+  w.latest = db
+  const state = w
+  if (!state.running) {
+    state.running = (async () => {
+      while (state.latest) {
+        const snapshot = state.latest
+        state.latest = null
+        try {
+          await writeDriveFile(uri.slice(DRIVE_PREFIX.length), snapshot)
+          // Only clear the "unsynced" flag if nothing newer arrived while this write was going.
+          if (!state.latest) await markClean(uri)
+        } catch {
+          state.latest = null // offline: leave it flagged for syncPending() to retry later
+          break
+        }
+      }
+      state.running = null
+    })()
+  }
+  await state.running
+}
+
 export async function syncPending(): Promise<void> {
   for (const uri of await dirtyUris()) {
+    if (writers.get(uri)?.running) continue
     try {
       const local = await readCached(uri)
       if (!local) {
@@ -104,7 +139,19 @@ export async function listFlashcardDecksWithStatus(workspaceUri: string): Promis
   try {
     await syncPending()
     const entries = await listDriveDecks(folderId)
-    const decks = entries.map((e) => ({ uri: DRIVE_PREFIX + e.fileId, file: e.file }))
+    // A deck whose latest progress hasn't reached Drive yet (still saving, or saved offline) is
+    // shown from the local copy merged over Drive's, so leaving a study session never makes the
+    // list flash back to older numbers.
+    const decks: DeckEntry[] = []
+    for (const e of entries) {
+      const u = DRIVE_PREFIX + e.fileId
+      let file = e.file
+      if (await isDirty(u)) {
+        const local = await readCached(u)
+        if (local) file = mergeProgress(file, local)
+      }
+      decks.push({ uri: u, file })
+    }
     // Caching is best-effort: a failure here must never stop the live deck list from showing.
     try {
       for (const d of decks) if (!(await isDirty(d.uri))) await writeCached(d.uri, d.file, false)
@@ -171,14 +218,16 @@ export async function writeDeckFile(uri: string, db: DatabaseFile): Promise<void
     // Save locally first and flag it, so progress survives being offline; only clear the flag
     // once Drive has actually accepted it.
     await writeCached(uri, db, true).catch(() => {})
-    try {
-      await writeDriveFile(uri.slice(DRIVE_PREFIX.length), db)
-      await markClean(uri)
-    } catch {
-      // offline - it'll be pushed by syncPending() next time the deck list loads
-    }
+    await queueDriveWrite(uri, db)
     return
   }
   const next: DatabaseFile = { ...db, updatedAt: new Date().toISOString() }
-  await StorageAccessFramework.writeAsStringAsync(uri, JSON.stringify(next, null, 2))
+  // Same idea as the Drive queue: chain each local write after the previous one for this file.
+  const previous = localWrites.get(uri) ?? Promise.resolve()
+  const run = previous
+    .catch(() => {})
+    .then(() => StorageAccessFramework.writeAsStringAsync(uri, JSON.stringify(next, null, 2)))
+  localWrites.set(uri, run)
+  await run
 }
+const localWrites = new Map<string, Promise<void>>()
