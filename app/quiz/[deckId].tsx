@@ -15,6 +15,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { readDeckFile } from '../../lib/workspace'
 import { loadQuizSettings, saveQuizSettings, DEFAULT_QUIZ_SETTINGS, type QuizSettings, type PromptSide } from '../../lib/quizSettings'
 import { saveQuizScore } from '../../lib/quizScores'
+import { loadQuizSession, saveQuizSession, clearQuizSession, type QuizSession } from '../../lib/quizSession'
 import { MetalButton, MetalCard } from '../../components/Metal'
 import { useTheme, type Theme } from '../../lib/theme'
 import type { DatabaseFile, DatabaseRow } from '../../lib/types'
@@ -80,6 +81,7 @@ export default function QuizScreen() {
   const [selectedChoice, setSelectedChoice] = useState<string | null>(null)
   const [score, setScore] = useState({ correct: 0, total: 0 })
   const [error, setError] = useState<string | null>(null)
+  const [pending, setPending] = useState<QuizSession | null>(null)
   const flashAnim = useRef(new Animated.Value(0)).current
   const pop = useRef(new Animated.Value(0.6)).current
   const quizDone = questions.length > 0 && index >= questions.length
@@ -104,8 +106,8 @@ export default function QuizScreen() {
   useEffect(() => {
     if (!uri) return
     const read = readDeckFile(uri)
-    Promise.all([read, loadQuizSettings()])
-      .then(([file, loadedSettings]) => {
+    Promise.all([read, loadQuizSettings(), loadQuizSession(uri)])
+      .then(([file, loadedSettings, session]) => {
         setDb(file)
         setSettings(loadedSettings)
         navigation.setOptions({
@@ -117,6 +119,20 @@ export default function QuizScreen() {
           )
         })
         setQuestions(buildQuestions(file.rows, loadedSettings.promptSide))
+        // Offer to pick up an unfinished run - but only if every question's card still exists
+        // and the "ask using" setting hasn't changed since, otherwise it would be stale.
+        const ids = new Set(file.rows.map((r) => r.id))
+        if (
+          session &&
+          session.index > 0 &&
+          session.index < session.questions.length &&
+          session.promptSide === loadedSettings.promptSide &&
+          session.questions.every((q) => ids.has(q.id.split(':')[0]))
+        ) {
+          setPending(session)
+        } else if (session) {
+          clearQuizSession(uri)
+        }
       })
       .catch(() => setError('Could not open this deck.'))
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -133,6 +149,7 @@ export default function QuizScreen() {
     setSettings(next)
     await saveQuizSettings(next)
     if (db && next.promptSide !== settings.promptSide) {
+      clearQuizSession(uri)
       setQuestions(buildQuestions(db.rows, next.promptSide))
       setIndex(0)
       setScore({ correct: 0, total: 0 })
@@ -155,7 +172,34 @@ export default function QuizScreen() {
   function recordAnswer(correct: boolean): void {
     setFeedback(correct ? 'correct' : 'incorrect')
     flash(correct ? 'correct' : 'incorrect')
-    setScore((s) => ({ correct: s.correct + (correct ? 1 : 0), total: s.total + 1 }))
+    const next = { correct: score.correct + (correct ? 1 : 0), total: score.total + 1 }
+    setScore(next)
+    persistProgress(next)
+  }
+
+  // Saved after every answer, so leaving at any point keeps the run: the resume point is the
+  // question after the one just answered, and the deck tile shows the score so far out of the
+  // whole quiz.
+  function persistProgress(next: { correct: number; total: number }): void {
+    if (!uri) return
+    const finished = index + 1 >= questions.length
+    saveQuizScore(uri, { correct: next.correct, total: finished ? next.total : questions.length })
+    if (finished) clearQuizSession(uri)
+    else saveQuizSession(uri, { questions, index: index + 1, score: next, promptSide: settings.promptSide })
+  }
+
+  function resumePending(): void {
+    if (!pending) return
+    setQuestions(pending.questions)
+    setIndex(pending.index)
+    setScore(pending.score)
+    resetAnswerState()
+    setPending(null)
+  }
+
+  function startOver(): void {
+    clearQuizSession(uri)
+    setPending(null)
   }
 
   function answerChoice(choice: string): void {
@@ -178,6 +222,7 @@ export default function QuizScreen() {
 
   function restart(): void {
     if (!db) return
+    clearQuizSession(uri)
     setQuestions(buildQuestions(db.rows, settings.promptSide))
     setIndex(0)
     setScore({ correct: 0, total: 0 })
@@ -240,6 +285,21 @@ export default function QuizScreen() {
         ) : (
           <ActivityIndicator color={theme.accent} />
         )}
+      </View>
+    )
+  }
+
+  if (pending) {
+    return (
+      <View style={[styles.center, { paddingBottom: 24 + insets.bottom }]}>
+        <Text style={styles.title}>Resume your quiz?</Text>
+        <Text style={styles.subtitle}>
+          You were on question {pending.index + 1} of {pending.questions.length} with {pending.score.correct} correct.
+        </Text>
+        <MetalButton label="Resume" colors={theme.btnGrad} onPress={resumePending} />
+        <Pressable style={styles.linkButton} onPress={startOver}>
+          <Text style={styles.linkButtonText}>Start over</Text>
+        </Pressable>
       </View>
     )
   }
