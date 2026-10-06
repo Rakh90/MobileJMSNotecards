@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
+import AsyncStorage from '@react-native-async-storage/async-storage'
+import NotesHome from '../components/NotesHome'
 import { View, Text, ScrollView, Pressable, TextInput, StyleSheet, RefreshControl, ActivityIndicator, Alert } from 'react-native'
 import { router, useNavigation } from 'expo-router'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
@@ -29,6 +31,16 @@ export default function DeckListScreen() {
   const navigation = useNavigation()
   const { workspaceUri, setWorkspaceUri, decks, loading, error, setError, refresh, offline, pending } = useDecks()
   const [studyPickerOpen, setStudyPickerOpen] = useState(false)
+  const [mode, setModeState] = useState<'flashcards' | 'notes'>('flashcards')
+  useEffect(() => {
+    AsyncStorage.getItem('jmsnote.homeMode')
+      .then((m) => m === 'notes' && setModeState('notes'))
+      .catch(() => {})
+  }, [])
+  function setMode(m: 'flashcards' | 'notes'): void {
+    setModeState(m)
+    AsyncStorage.setItem('jmsnote.homeMode', m).catch(() => {})
+  }
   const { folders, assignments, trashedCount, reload: reloadFolders } = useDeckFolders()
   const { scores: quizScores } = useQuizScores()
   const [driveConnecting, setDriveConnecting] = useState(false)
@@ -41,7 +53,8 @@ export default function DeckListScreen() {
 
   useEffect(() => {
     navigation.setOptions({
-      headerRight: workspaceUri
+      title: mode === 'notes' ? 'JMSNote Notes' : 'JMSNote Flashcards',
+      headerRight: workspaceUri && mode === 'flashcards'
         ? () => (
             <MenuButton
               theme={theme}
@@ -64,7 +77,7 @@ export default function DeckListScreen() {
         : undefined
     })
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [navigation, theme, workspaceUri, trashedCount, decks.length])
+  }, [navigation, theme, workspaceUri, trashedCount, decks.length, mode])
 
   async function chooseFolder(): Promise<void> {
     const uri = await pickWorkspaceFolder()
@@ -160,6 +173,15 @@ export default function DeckListScreen() {
 
   return (
     <View style={styles.container}>
+      <View style={styles.modeSwitch}>
+        {(['flashcards', 'notes'] as const).map((m) => (
+          <Pressable key={m} style={[styles.modeBtn, mode === m && styles.modeBtnOn]} onPress={() => setMode(m)}>
+            <Text style={[styles.modeText, mode === m && styles.modeTextOn]}>{m === 'flashcards' ? 'Flashcards' : 'Notes'}</Text>
+          </Pressable>
+        ))}
+      </View>
+      {mode === 'notes' && <NotesHome theme={theme} />}
+      {mode === 'flashcards' && (
       <ScrollView
         contentContainerStyle={styles.list}
         refreshControl={<RefreshControl refreshing={loading} onRefresh={() => refresh(workspaceUri)} />}
@@ -311,6 +333,7 @@ export default function DeckListScreen() {
           </View>
         )}
       </ScrollView>
+      )}
       <StudyPickerModal
         visible={studyPickerOpen}
         theme={theme}
@@ -375,6 +398,19 @@ export default function DeckListScreen() {
 function makeStyles(theme: Theme) {
   return StyleSheet.create({
     container: { flex: 1, backgroundColor: theme.bg },
+    modeSwitch: {
+      flexDirection: 'row',
+      marginHorizontal: 16,
+      marginTop: 12,
+      borderWidth: 1,
+      borderColor: theme.borderAccent,
+      borderRadius: 10,
+      overflow: 'hidden'
+    },
+    modeBtn: { flex: 1, paddingVertical: 9, alignItems: 'center', backgroundColor: theme.cardBg },
+    modeBtnOn: { backgroundColor: theme.bgActive },
+    modeText: { fontSize: 14, color: theme.textMuted, fontWeight: '500' },
+    modeTextOn: { color: theme.accent, fontWeight: '700' },
     center: { alignItems: 'center', justifyContent: 'center', padding: 24 },
     subtitle: { fontSize: 14, color: theme.textMuted, textAlign: 'center', marginBottom: 10 },
     button: {

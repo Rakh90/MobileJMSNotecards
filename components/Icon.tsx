@@ -7,6 +7,7 @@ const PATHS = {
   study: 'M4 5h16v14H4zM8 9h8M8 13h5',
   download: 'M12 4v11M7 11l5 5 5-5M5 20h14',
   bolt: 'M13 3L5 14h6l-1 7 8-11h-6z',
+  refresh: 'M20 11a8 8 0 0 0-14-3L4 10M4 4v6h6M4 13a8 8 0 0 0 14 3l2-3M20 20v-6h-6',
   swap: 'M4 4v6h6M20 20v-6h-6M20 10a8 8 0 0 0-14-3L4 10M4 14a8 8 0 0 0 14 3l2-3'
 } as const
 

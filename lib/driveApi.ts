@@ -74,3 +74,43 @@ export async function writeDriveFile(fileId: string, db: DatabaseFile): Promise<
     body: JSON.stringify(next, null, 2)
   })
 }
+
+export interface DriveChild {
+  id: string
+  name: string
+  mimeType: string
+  modifiedTime: string
+}
+
+export const DRIVE_FOLDER_MIME = FOLDER_MIME
+
+// Every child of a folder, following Drive's page tokens (a course's notes/ folder can hold more
+// than one page of files).
+export async function listChildren(parentId: string, onlyFolders = false): Promise<DriveChild[]> {
+  const q =
+    `'${parentId}' in parents and trashed = false` + (onlyFolders ? ` and mimeType = '${FOLDER_MIME}'` : '')
+  const out: DriveChild[] = []
+  let pageToken: string | undefined
+  do {
+    const url =
+      `${API}/files?q=${encodeURIComponent(q)}&pageSize=1000&fields=nextPageToken,files(id,name,mimeType,modifiedTime)` +
+      (pageToken ? `&pageToken=${encodeURIComponent(pageToken)}` : '')
+    const data = (await (await authedFetch(url)).json()) as { files: DriveChild[]; nextPageToken?: string }
+    out.push(...data.files)
+    pageToken = data.nextPageToken
+  } while (pageToken)
+  return out
+}
+
+export async function findChildId(parentId: string, name: string, folder = false): Promise<string | null> {
+  return findChildByName(parentId, name, folder ? FOLDER_MIME : undefined)
+}
+
+export async function readDriveText(fileId: string): Promise<string> {
+  return (await authedFetch(`${API}/files/${fileId}?alt=media`)).text()
+}
+
+export async function driveMediaRequest(fileId: string): Promise<{ url: string; headers: Record<string, string> }> {
+  const token = await getDriveAccessToken()
+  return { url: `${API}/files/${fileId}?alt=media`, headers: { Authorization: `Bearer ${token}` } }
+}
