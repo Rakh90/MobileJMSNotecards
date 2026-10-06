@@ -11,6 +11,7 @@ export interface TableCell {
 
 const CHAR_W = 7.4
 const CELL_PAD = 9
+const MIN_COL = 58
 
 function columnWidths(rows: TableCell[][], cols: number): number[] {
   const widths: number[] = []
@@ -47,11 +48,24 @@ export default function NoteTable({
   const [heights, setHeights] = useState<Record<number, number>>({})
   const styles = makeStyles(theme)
 
+  // Columns start at the width their text wants. Too wide for the screen: every column gives up
+  // width in proportion to how much it has beyond a small minimum, so text wraps onto more lines
+  // instead of the table scrolling. Only a table with too many columns to fit even at the
+  // minimum still scrolls sideways (first column pinned).
   let widths = columnWidths(all, cols)
   const total = widths.reduce((a, b) => a + b, 0)
-  if (total < avail) widths = widths.map((w) => (w * avail) / total)
-  let first = widths[0]
-  if (total > avail && first > avail * 0.42) first = avail * 0.42
+  if (total < avail) {
+    widths = widths.map((w) => (w * avail) / total)
+  } else if (total > avail) {
+    const min = MIN_COL
+    const minTotal = min * widths.length
+    if (avail <= minTotal) widths = widths.map(() => min)
+    else {
+      const k = (avail - minTotal) / (total - minTotal)
+      widths = widths.map((w) => min + Math.max(0, w - min) * k)
+    }
+  }
+  const first = widths[0]
   const rest = widths.slice(1)
   const restTotal = rest.reduce((a, b) => a + b, 0)
 
