@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { View, Text, Pressable, StyleSheet, ActivityIndicator, Animated, PanResponder } from 'react-native'
+import { View, Text, Pressable, StyleSheet, ActivityIndicator, Animated, PanResponder, useWindowDimensions } from 'react-native'
 import { useLocalSearchParams, useNavigation, router } from 'expo-router'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { readDeckFile, writeDeckFile } from '../../lib/workspace'
@@ -29,7 +29,9 @@ interface StudyItem {
 
 export default function StudyScreen() {
   const theme = useTheme()
-  const styles = makeStyles(theme)
+  const { width: winW, height: winH } = useWindowDimensions()
+  // Sideways, the screen is short: a smaller card keeps long answers on screen.
+  const styles = makeStyles(theme, winW > winH)
   const insets = useSafeAreaInsets()
   const { deckId, uris: urisParam, mode } = useLocalSearchParams<{ deckId: string; uris?: string; mode?: string }>()
   const uris: string[] = urisParam ? JSON.parse(urisParam) : [decodeURIComponent(deckId ?? '')]
@@ -300,7 +302,7 @@ export default function StudyScreen() {
   )
 }
 
-function makeStyles(theme: Theme) {
+function makeStyles(theme: Theme, landscape = false) {
   return StyleSheet.create({
     container: { flex: 1, backgroundColor: theme.bg, padding: 16 },
     center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24, gap: 12 },
@@ -328,8 +330,8 @@ function makeStyles(theme: Theme) {
       opacity: 0.3
     },
     card: {
-      padding: 28,
-      minHeight: 220,
+      padding: landscape ? 14 : 28,
+      minHeight: landscape ? 100 : 220,
       justifyContent: 'center',
       alignItems: 'center',
       elevation: 6,
@@ -338,7 +340,7 @@ function makeStyles(theme: Theme) {
       shadowOpacity: theme.dark ? 0.4 : 0.12,
       shadowRadius: 10
     },
-    cardText: { fontSize: 21, textAlign: 'center', color: theme.text, fontWeight: '500' },
+    cardText: { fontSize: landscape ? 17 : 21, textAlign: 'center', color: theme.text, fontWeight: '500' },
     swipeTint: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, borderRadius: 16 },
     tapHint: { fontSize: 12, color: theme.textMuted, marginTop: 18 },
     title: { fontSize: 20, fontWeight: '700', textAlign: 'center', color: theme.text, alignSelf: 'stretch' },
