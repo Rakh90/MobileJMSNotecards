@@ -214,7 +214,11 @@ function paragraphLike(children: Tok[], ctx: Ctx, textStyle: TextStyle, key: str
   const { content, images } = inlineTokens(children, ctx)
   return (
     <View key={key} style={{ marginBottom: tight ? 2 : 10 }}>
-      {content.length > 0 && <Text style={textStyle}>{content}</Text>}
+      {content.length > 0 && (
+        <Text style={textStyle} textBreakStrategy="simple">
+          {content}
+        </Text>
+      )}
       {images.map((src, i) => (
         <NoteImage key={i} src={src} ctx={ctx} />
       ))}
