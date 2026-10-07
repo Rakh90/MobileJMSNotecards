@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import { Image, Linking, Platform, ScrollView, StyleSheet, Text, View, type TextStyle } from 'react-native'
 import MarkdownIt from 'markdown-it'
 import NoteTable, { type TableCell } from './NoteTable'
@@ -44,10 +44,59 @@ function buildTree(tokens: Tok[]): TreeNode[] {
   return root
 }
 
+// Where each text block (a paragraph or table cell) sits on screen, so "find on page" can scroll
+// to the line a match is on.
+interface TextBlock {
+  ref: { measureLayout: (...args: any[]) => void } | null
+  lines: { y: number; text: string }[]
+}
+
+interface FindMatch {
+  container: string
+  offset: number
+}
+
 interface Ctx {
   theme: Theme
   data: CourseData
   onNoteLink: (id: string) => void
+  find: string
+  matches: FindMatch[]
+  blocks: Map<string, TextBlock>
+}
+
+// The match the user is on, kept in context so stepping through matches only re-draws the
+// highlighted words and not the whole note.
+const CurrentMatchContext = createContext(-1)
+
+function FindMark({ idx, theme, children }: { idx: number; theme: Theme; children: string }) {
+  const current = useContext(CurrentMatchContext)
+  const active = idx === current
+  return (
+    <Text style={{ backgroundColor: active ? '#ff9632' : theme.dark ? '#7a6a1a' : '#ffe14d', color: active ? '#000' : undefined }}>
+      {children}
+    </Text>
+  )
+}
+
+function escapeRegExp(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
+// Props that let a text block report its position and line layout - only attached while a find
+// term is active, so normal reading doesn't pay for the extra layout events.
+function blockProps(ctx: Ctx, cid: string) {
+  if (!ctx.find) return {}
+  const entry: TextBlock = { ref: null, lines: [] }
+  ctx.blocks.set(cid, entry)
+  return {
+    ref: (r: TextBlock['ref']) => {
+      entry.ref = r
+    },
+    onTextLayout: (e: { nativeEvent: { lines: { y: number; text: string }[] } }) => {
+      entry.lines = e.nativeEvent.lines.map((l) => ({ y: l.y, text: l.text }))
+    }
+  }
 }
 
 function attr(t: Tok, name: string): string | null {
@@ -65,23 +114,54 @@ interface Frame {
 let keyCounter = 0
 const nextKey = (): string => `k${keyCounter++}`
 
-function highlighted(text: string, ctx: Ctx): React.ReactNode[] {
-  // ==marked text== is how the desktop editor saves highlighted text.
-  const parts = text.split(/==([^=\n]+)==/g)
-  return parts.map((p, i) =>
-    i % 2 === 1 ? (
-      <Text key={nextKey()} style={{ backgroundColor: ctx.theme.dark ? '#6b5a12' : '#fff3a3' }}>
-        {p}
-      </Text>
-    ) : (
-      p
-    )
-  )
-}
-
-function inlineTokens(children: Tok[], ctx: Ctx): { content: React.ReactNode[]; images: string[] } {
+function inlineTokens(children: Tok[], ctx: Ctx, cid: string): { content: React.ReactNode[]; images: string[] } {
   const stack: Frame[] = [{ style: {}, nodes: [] }]
   const images: string[] = []
+  // Running character position within this text block, so a find match can be mapped to a line.
+  let offset = 0
+  const findRe = ctx.find ? new RegExp(escapeRegExp(ctx.find), 'gi') : null
+
+  // Plain text, with every find match swapped for a highlighted mark.
+  const emit = (text: string): React.ReactNode[] => {
+    const nodes: React.ReactNode[] = []
+    if (!findRe) {
+      nodes.push(text)
+    } else {
+      findRe.lastIndex = 0
+      let last = 0
+      let m: RegExpExecArray | null
+      while ((m = findRe.exec(text))) {
+        if (m[0].length === 0) {
+          findRe.lastIndex++
+          continue
+        }
+        if (m.index > last) nodes.push(text.slice(last, m.index))
+        const idx = ctx.matches.push({ container: cid, offset: offset + m.index }) - 1
+        nodes.push(
+          <FindMark key={nextKey()} idx={idx} theme={ctx.theme}>
+            {m[0]}
+          </FindMark>
+        )
+        last = m.index + m[0].length
+      }
+      if (last < text.length) nodes.push(text.slice(last))
+    }
+    offset += text.length
+    return nodes
+  }
+
+  // ==marked text== is how the desktop editor saves highlighted text.
+  const highlighted = (text: string): React.ReactNode[] =>
+    text.split(/==([^=\n]+)==/g).flatMap<React.ReactNode>((p, i): React.ReactNode[] =>
+      i % 2 === 1
+        ? [
+            <Text key={nextKey()} style={{ backgroundColor: ctx.theme.dark ? '#6b5a12' : '#fff3a3' }}>
+              <>{emit(p)}</>
+            </Text>
+          ]
+        : emit(p)
+    )
+
   const top = (): Frame => stack[stack.length - 1]
   const push = (style: TextStyle, onPress?: () => void): void => {
     stack.push({ style, nodes: [], onPress })
@@ -98,11 +178,12 @@ function inlineTokens(children: Tok[], ctx: Ctx): { content: React.ReactNode[]; 
   for (const t of children) {
     switch (t.type) {
       case 'text':
-        top().nodes.push(...highlighted(t.content, ctx))
+        top().nodes.push(...highlighted(t.content))
         break
       case 'softbreak':
       case 'hardbreak':
         top().nodes.push('\n')
+        offset += 1
         break
       case 'strong_open':
         push({ fontWeight: '700' })
@@ -131,6 +212,7 @@ function inlineTokens(children: Tok[], ctx: Ctx): { content: React.ReactNode[]; 
             {` ${t.content} `}
           </Text>
         )
+        offset += t.content.length + 2
         break
       case 'link_open': {
         const href = attr(t, 'href') ?? ''
@@ -151,10 +233,16 @@ function inlineTokens(children: Tok[], ctx: Ctx): { content: React.ReactNode[]; 
         images.push(attr(t, 'src') ?? '')
         break
       case 'html_inline':
-        if (/^<br\s*\/?>$/i.test(t.content.trim())) top().nodes.push('\n')
+        if (/^<br\s*\/?>$/i.test(t.content.trim())) {
+          top().nodes.push('\n')
+          offset += 1
+        }
         break
       default:
-        if (t.content) top().nodes.push(t.content)
+        if (t.content) {
+          top().nodes.push(t.content)
+          offset += t.content.length
+        }
     }
   }
   while (stack.length > 1) pop()
@@ -211,11 +299,11 @@ function renderBlocks(nodes: TreeNode[], ctx: Ctx, depth = 0): React.ReactNode[]
 }
 
 function paragraphLike(children: Tok[], ctx: Ctx, textStyle: TextStyle, key: string, tight = false) {
-  const { content, images } = inlineTokens(children, ctx)
+  const { content, images } = inlineTokens(children, ctx, key)
   return (
     <View key={key} style={{ marginBottom: tight ? 2 : 10 }}>
       {content.length > 0 && (
-        <Text style={textStyle} textBreakStrategy="simple">
+        <Text style={textStyle} textBreakStrategy="simple" {...blockProps(ctx, key)}>
           {content}
         </Text>
       )}
@@ -350,32 +438,35 @@ function renderListContent(kids: TreeNode[], ctx: Ctx, depth: number): React.Rea
 function cellOf(children: Tok[], ctx: Ctx, bold: boolean, align: string | null): TableCell {
   const text = plainText(children)
   const words = text.split(/\s+/)
+  // Built once, up front (not when the table draws), so find matches are numbered in reading order.
+  const cid = nextKey()
+  const { content, images } = inlineTokens(children, ctx, cid)
+  const props = blockProps(ctx, cid)
+  const node = (
+    <View>
+      {content.length > 0 && (
+        <Text
+          {...props}
+          style={{
+            color: ctx.theme.text,
+            fontSize: 13.5,
+            lineHeight: 19,
+            fontWeight: bold ? '700' : '400',
+            textAlign: align === 'center' ? 'center' : align === 'right' ? 'right' : 'left'
+          }}
+        >
+          {content}
+        </Text>
+      )}
+      {images.map((src, i) => (
+        <NoteImage key={i} src={src} ctx={ctx} />
+      ))}
+    </View>
+  )
   return {
     textLength: text.length,
     longestWord: Math.max(0, ...words.map((w) => w.length)),
-    render: () => {
-      const { content, images } = inlineTokens(children, ctx)
-      return (
-        <View>
-          {content.length > 0 && (
-            <Text
-              style={{
-                color: ctx.theme.text,
-                fontSize: 13.5,
-                lineHeight: 19,
-                fontWeight: bold ? '700' : '400',
-                textAlign: align === 'center' ? 'center' : align === 'right' ? 'right' : 'left'
-              }}
-            >
-              {content}
-            </Text>
-          )}
-          {images.map((src, i) => (
-            <NoteImage key={i} src={src} ctx={ctx} />
-          ))}
-        </View>
-      )
-    }
+    render: () => node
   }
 }
 
@@ -404,18 +495,71 @@ export default function NoteView({
   body,
   data,
   theme,
-  onNoteLink
+  onNoteLink,
+  find = '',
+  current = 0,
+  onCount,
+  scrollRef
 }: {
   body: string
   data: CourseData
   theme: Theme
   onNoteLink: (id: string) => void
+  find?: string
+  current?: number
+  onCount?: (count: number) => void
+  scrollRef?: React.RefObject<ScrollView | null>
 }) {
+  const matchesRef = useRef<FindMatch[]>([])
+  const blocksRef = useRef(new Map<string, TextBlock>())
   const content = useMemo(() => {
+    const matches: FindMatch[] = []
+    const blocks = new Map<string, TextBlock>()
+    matchesRef.current = matches
+    blocksRef.current = blocks
     const tokens = md.parse(body, {}) as unknown as Tok[]
-    return renderBlocks(buildTree(tokens), { theme, data, onNoteLink })
-  }, [body, data, theme, onNoteLink])
-  return <View style={styles.root}>{content}</View>
+    return renderBlocks(buildTree(tokens), { theme, data, onNoteLink, find, matches, blocks })
+  }, [body, data, theme, onNoteLink, find])
+
+  useEffect(() => {
+    onCount?.(matchesRef.current.length)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [content])
+
+  // Scroll so the line holding the current match sits near the top. Waits a moment so the text
+  // blocks have reported their line layout after (re)drawing.
+  useEffect(() => {
+    const match = matchesRef.current[current]
+    if (!find || !match) return
+    const timer = setTimeout(() => {
+      const block = blocksRef.current.get(match.container)
+      const scroller = scrollRef?.current
+      // getInnerViewRef exists at runtime but is missing from the ScrollView typings.
+      const inner = (scroller as unknown as { getInnerViewRef?: () => unknown } | null)?.getInnerViewRef?.()
+      if (!block?.ref || !scroller || !inner) return
+      block.ref.measureLayout(
+        inner,
+        (_x: number, y: number) => {
+          let lineY = 0
+          let seen = 0
+          for (const line of block.lines) {
+            lineY = line.y
+            seen += line.text.length
+            if (match.offset < seen) break
+          }
+          scroller.scrollTo({ y: Math.max(0, y + lineY - 150), animated: true })
+        },
+        () => {}
+      )
+    }, 150)
+    return () => clearTimeout(timer)
+  }, [current, find, content, scrollRef])
+
+  return (
+    <CurrentMatchContext.Provider value={current}>
+      <View style={styles.root}>{content}</View>
+    </CurrentMatchContext.Provider>
+  )
 }
 
 const styles = StyleSheet.create({ root: { paddingBottom: 40 } })
