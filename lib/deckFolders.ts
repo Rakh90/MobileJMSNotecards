@@ -117,3 +117,15 @@ export async function setDeckFolder(deckUri: string, folderId: string | null): P
   else delete next[deckUri]
   await saveAssignments(next)
 }
+
+// Moves a folder (with everything inside it) under another folder, or to the top level with
+// null. A folder can't go inside itself or its own subfolders - that would cut the branch off
+// from the tree. Returns false (and changes nothing) when the move isn't allowed.
+export async function moveFolder(id: string, newParentId: string | null): Promise<boolean> {
+  const all = await loadAllFolders()
+  if (newParentId === id) return false
+  if (newParentId && descendantFolderIds(all, id).includes(newParentId)) return false
+  if (newParentId && !all.some((f) => f.id === newParentId && !f.deletedAt)) return false
+  await saveFolders(all.map((f) => (f.id === id ? { ...f, parentId: newParentId } : f)))
+  return true
+}

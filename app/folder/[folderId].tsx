@@ -4,9 +4,10 @@ import { useLocalSearchParams, useNavigation, router } from 'expo-router'
 import { useDecks } from '../../lib/useDecks'
 import { useDeckFolders } from '../../lib/useDeckFolders'
 import { useQuizScores } from '../../lib/useQuizScores'
-import { setDeckFolder, createFolder, trashFolder, descendantFolderIds } from '../../lib/deckFolders'
+import { setDeckFolder, createFolder, trashFolder, moveFolder, descendantFolderIds } from '../../lib/deckFolders'
 import DeckRow from '../../components/DeckRow'
 import MoveToFolderModal from '../../components/MoveToFolderModal'
+import MoveFolderModal from '../../components/MoveFolderModal'
 import { useTheme, type Theme } from '../../lib/theme'
 import { MetalCard } from '../../components/Metal'
 import FolderIcon from '../../components/FolderIcon'
@@ -40,7 +41,8 @@ export default function FolderScreen() {
           theme={theme}
           items={[
             { label: 'Study this folder…', icon: 'study', onPress: () => setStudyPickerOpen(true) },
-            { label: 'New subfolder', icon: 'plus', onPress: () => setCreatingFolder(true) }
+            { label: 'New subfolder', icon: 'plus', onPress: () => setCreatingFolder(true) },
+            { label: 'Move this folder…', icon: 'swap', onPress: () => setMoveFolderTarget({ id: folderId, name: folderName }) }
           ]}
         />
       )
@@ -49,6 +51,7 @@ export default function FolderScreen() {
 
   const [folderMenu, setFolderMenu] = useState<{ id: string; name: string } | null>(null)
   const [deleteConfirm, setDeleteConfirm] = useState<{ id: string; name: string } | null>(null)
+  const [moveFolderTarget, setMoveFolderTarget] = useState<{ id: string; name: string } | null>(null)
   function openFolderMenu(f: { id: string; name: string }): void {
     setFolderMenu(f)
   }
@@ -224,6 +227,14 @@ export default function FolderScreen() {
         onClose={() => setFolderMenu(null)}
         actions={[
           {
+            label: 'Move folder…',
+            icon: 'folder',
+            onPress: () => {
+              const target = folderMenu
+              setTimeout(() => setMoveFolderTarget(target), 250)
+            }
+          },
+          {
             label: 'Delete folder',
             icon: 'trash',
             destructive: true,
@@ -251,6 +262,18 @@ export default function FolderScreen() {
             }
           }
         ]}
+      />
+      <MoveFolderModal
+        target={moveFolderTarget}
+        folders={folders}
+        theme={theme}
+        onChoose={async (parentId) => {
+          const t = moveFolderTarget
+          setMoveFolderTarget(null)
+          if (t) await moveFolder(t.id, parentId)
+          reloadFolders()
+        }}
+        onClose={() => setMoveFolderTarget(null)}
       />
       <MoveToFolderModal
         deckTitle={moveTarget?.title ?? null}

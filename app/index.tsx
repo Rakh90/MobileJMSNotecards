@@ -10,9 +10,10 @@ import { findFolderByName } from '../lib/driveApi'
 import { useDecks } from '../lib/useDecks'
 import { useDeckFolders } from '../lib/useDeckFolders'
 import { useQuizScores } from '../lib/useQuizScores'
-import { createFolder, setDeckFolder, trashFolder, descendantFolderIds } from '../lib/deckFolders'
+import { createFolder, setDeckFolder, trashFolder, moveFolder, descendantFolderIds } from '../lib/deckFolders'
 import DeckRow from '../components/DeckRow'
 import MoveToFolderModal from '../components/MoveToFolderModal'
+import MoveFolderModal from '../components/MoveFolderModal'
 import { useTheme, type Theme } from '../lib/theme'
 import { MetalButton, MetalCard } from '../components/Metal'
 import FolderIcon from '../components/FolderIcon'
@@ -121,6 +122,7 @@ export default function DeckListScreen() {
 
   const [folderMenu, setFolderMenu] = useState<{ id: string; name: string } | null>(null)
   const [deleteConfirm, setDeleteConfirm] = useState<{ id: string; name: string } | null>(null)
+  const [moveFolderTarget, setMoveFolderTarget] = useState<{ id: string; name: string } | null>(null)
   function openFolderMenu(f: { id: string; name: string }): void {
     setFolderMenu(f)
   }
@@ -354,6 +356,14 @@ export default function DeckListScreen() {
         onClose={() => setFolderMenu(null)}
         actions={[
           {
+            label: 'Move folder…',
+            icon: 'folder',
+            onPress: () => {
+              const target = folderMenu
+              setTimeout(() => setMoveFolderTarget(target), 250)
+            }
+          },
+          {
             label: 'Delete folder',
             icon: 'trash',
             destructive: true,
@@ -381,6 +391,18 @@ export default function DeckListScreen() {
             }
           }
         ]}
+      />
+      <MoveFolderModal
+        target={moveFolderTarget}
+        folders={folders}
+        theme={theme}
+        onChoose={async (parentId) => {
+          const t = moveFolderTarget
+          setMoveFolderTarget(null)
+          if (t) await moveFolder(t.id, parentId)
+          reloadFolders()
+        }}
+        onClose={() => setMoveFolderTarget(null)}
       />
       <MoveToFolderModal
         deckTitle={moveTarget?.title ?? null}
