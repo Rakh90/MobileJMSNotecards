@@ -6,7 +6,8 @@ import FolderIcon from '../../components/FolderIcon'
 import MenuButton from '../../components/MenuButton'
 import ActionSheet from '../../components/ActionSheet'
 import MoveFolderModal from '../../components/MoveFolderModal'
-import { applyMoves, clearFolderMove, loadMoves, setFolderMove } from '../../lib/noteFolderMoves'
+import ReorderArrows from '../../components/ReorderArrows'
+import { applyMoves, clearFolderMove, loadMoves, loadOrder, saveOrder, setFolderMove, sortFolders } from '../../lib/noteFolderMoves'
 import type { DeckFolder } from '../../lib/deckFolders'
 import { useTheme, type Theme } from '../../lib/theme'
 import { downloadCourse, loadCourse, readCachedCourse, type CourseData, type NoteSummary } from '../../lib/notes'
@@ -26,10 +27,13 @@ export default function CourseScreen() {
   const [search, setSearch] = useState('')
   const [progress, setProgress] = useState<string | null>(null)
   const [moves, setMoves] = useState<Record<string, string | null>>({})
+  const [orders, setOrders] = useState<Record<string, string[]>>({})
+  const [arranging, setArranging] = useState(false)
   const [folderMenu, setFolderMenu] = useState<{ id: string; name: string } | null>(null)
   const [moveTarget, setMoveTarget] = useState<{ id: string; name: string } | null>(null)
   useEffect(() => {
     loadMoves(courseId).then(setMoves)
+    loadOrder(courseId).then(setOrders)
   }, [courseId])
   // The class's folders as arranged on this phone (see lib/noteFolderMoves.ts).
   const effFolders = useMemo(() => (data ? applyMoves(data.folders, moves) : []), [data, moves])
@@ -64,6 +68,7 @@ export default function CourseScreen() {
           theme={theme}
           items={[
             { label: 'Refresh', icon: 'refresh', onPress: refresh },
+            { label: arranging ? 'Done rearranging' : 'Rearrange folders', icon: 'swap' as const, onPress: () => setArranging((v) => !v) },
             ...(currentFolder
               ? [{ label: 'Move this folder…', icon: 'swap' as const, onPress: () => setMoveTarget({ id: currentFolder, name: name ? decodeURIComponent(name) : 'Folder' }) }]
               : []),
@@ -73,7 +78,7 @@ export default function CourseScreen() {
       )
     })
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [navigation, theme, name, data, refresh, currentFolder])
+  }, [navigation, theme, name, data, refresh, currentFolder, arranging])
 
   async function downloadAll(): Promise<void> {
     if (!data) return
@@ -106,7 +111,11 @@ export default function CourseScreen() {
 
   const query = search.trim().toLowerCase()
   const folders = data
-    ? effFolders.filter((f) => f.parentId === currentFolder).sort((a, b) => a.order - b.order || a.name.localeCompare(b.name))
+    ? sortFolders(
+        effFolders.filter((f) => f.parentId === currentFolder),
+        currentFolder,
+        orders
+      )
     : []
   const notes: NoteSummary[] = data
     ? query
@@ -114,6 +123,15 @@ export default function CourseScreen() {
       : data.notes.filter((n) => n.folderId === currentFolder)
     : []
   notes.sort((a, b) => a.order - b.order || a.title.localeCompare(b.title))
+
+  async function nudge(index: number, direction: -1 | 1): Promise<void> {
+    const ids = folders.map((f) => f.id)
+    const target = index + direction
+    if (target < 0 || target >= ids.length) return
+    ;[ids[index], ids[target]] = [ids[target], ids[index]]
+    await saveOrder(courseId, currentFolder, ids)
+    setOrders(await loadOrder(courseId))
+  }
 
   function openNote(n: NoteSummary): void {
     router.push(`/note/${n.id}?courseId=${courseId}&title=${encodeURIComponent(n.title)}`)
@@ -143,14 +161,14 @@ export default function CourseScreen() {
           />
         )}
         {!query &&
-          folders.map((f) => {
+          folders.map((f, fi) => {
             const count = subtreeCount.get(f.id) ?? 0
             return (
               <MetalCard key={f.id} theme={theme} style={{ marginBottom: 10 }}>
                 <Pressable
                   style={styles.row}
-                  onPress={() => router.push(`/notes/${courseId}?name=${encodeURIComponent(f.name)}&folderId=${f.id}`)}
-                  onLongPress={() => setFolderMenu({ id: f.id, name: f.name })}
+                  onPress={() => !arranging && router.push(`/notes/${courseId}?name=${encodeURIComponent(f.name)}&folderId=${f.id}`)}
+                  onLongPress={() => !arranging && setFolderMenu({ id: f.id, name: f.name })}
                 >
                   <View style={styles.nameRow}>
                     <FolderIcon color={theme.accent} size={20} />
@@ -158,7 +176,17 @@ export default function CourseScreen() {
                       {f.name}
                     </Text>
                   </View>
-                  <Text style={styles.count}>{`${count} note${count === 1 ? '' : 's'} ›`}</Text>
+                  {arranging ? (
+                    <ReorderArrows
+                      theme={theme}
+                      canUp={fi > 0}
+                      canDown={fi < folders.length - 1}
+                      onUp={() => nudge(fi, -1)}
+                      onDown={() => nudge(fi, 1)}
+                    />
+                  ) : (
+                    <Text style={styles.count}>{`${count} note${count === 1 ? '' : 's'} ›`}</Text>
+                  )}
                 </Pressable>
               </MetalCard>
             )

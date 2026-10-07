@@ -4,10 +4,11 @@ import { useLocalSearchParams, useNavigation, router } from 'expo-router'
 import { useDecks } from '../../lib/useDecks'
 import { useDeckFolders } from '../../lib/useDeckFolders'
 import { useQuizScores } from '../../lib/useQuizScores'
-import { setDeckFolder, createFolder, trashFolder, moveFolder, descendantFolderIds } from '../../lib/deckFolders'
+import { setDeckFolder, createFolder, trashFolder, moveFolder, nudgeFolder, descendantFolderIds } from '../../lib/deckFolders'
 import DeckRow from '../../components/DeckRow'
 import MoveToFolderModal from '../../components/MoveToFolderModal'
 import MoveFolderModal from '../../components/MoveFolderModal'
+import ReorderArrows from '../../components/ReorderArrows'
 import { useTheme, type Theme } from '../../lib/theme'
 import { MetalCard } from '../../components/Metal'
 import FolderIcon from '../../components/FolderIcon'
@@ -28,6 +29,7 @@ export default function FolderScreen() {
   const [search, setSearch] = useState('')
   const [creatingFolder, setCreatingFolder] = useState(false)
   const [studyPickerOpen, setStudyPickerOpen] = useState(false)
+  const [arranging, setArranging] = useState(false)
   const [newFolderName, setNewFolderName] = useState('')
   const [moveTarget, setMoveTarget] = useState<{ uri: string; title: string } | null>(null)
 
@@ -42,16 +44,25 @@ export default function FolderScreen() {
           items={[
             { label: 'Study this folder…', icon: 'study', onPress: () => setStudyPickerOpen(true) },
             { label: 'New subfolder', icon: 'plus', onPress: () => setCreatingFolder(true) },
+            {
+              label: arranging ? 'Done rearranging' : 'Rearrange folders',
+              icon: 'swap',
+              onPress: () => setArranging((v) => !v)
+            },
             { label: 'Move this folder…', icon: 'swap', onPress: () => setMoveFolderTarget({ id: folderId, name: folderName }) }
           ]}
         />
       )
     })
-  }, [folderName, navigation, theme])
+  }, [folderName, navigation, theme, arranging])
 
   const [folderMenu, setFolderMenu] = useState<{ id: string; name: string } | null>(null)
   const [deleteConfirm, setDeleteConfirm] = useState<{ id: string; name: string } | null>(null)
   const [moveFolderTarget, setMoveFolderTarget] = useState<{ id: string; name: string } | null>(null)
+  async function nudge(id: string, direction: -1 | 1): Promise<void> {
+    await nudgeFolder(id, direction)
+    reloadFolders()
+  }
   function openFolderMenu(f: { id: string; name: string }): void {
     setFolderMenu(f)
   }
@@ -147,23 +158,33 @@ export default function FolderScreen() {
           </>
         ) : (
           <>
-            {subfolders.map((f) => {
+            {subfolders.map((f, fi, arr) => {
               const idsInTree = new Set([f.id, ...descendantFolderIds(folders, f.id)])
               const count = decks.filter((d) => assignments[d.uri] && idsInTree.has(assignments[d.uri])).length
               return (
                 <MetalCard key={f.id} theme={theme} style={{ marginBottom: 10 }}>
                   <Pressable
                     style={styles.folderRow}
-                    onPress={() => router.push(`/folder/${f.id}?name=${encodeURIComponent(f.name)}`)}
-                    onLongPress={() => openFolderMenu(f)}
+                    onPress={() => !arranging && router.push(`/folder/${f.id}?name=${encodeURIComponent(f.name)}`)}
+                    onLongPress={() => !arranging && openFolderMenu(f)}
                   >
                     <View style={styles.folderNameRow}>
                       <FolderIcon color={theme.accent} size={20} />
                       <Text style={styles.folderRowText}>{f.name}</Text>
                     </View>
-                    <Text style={styles.folderRowCount}>
-                      {`${count} deck${count === 1 ? '' : 's'} ›`}
-                    </Text>
+                    {arranging ? (
+                      <ReorderArrows
+                        theme={theme}
+                        canUp={fi > 0}
+                        canDown={fi < arr.length - 1}
+                        onUp={() => nudge(f.id, -1)}
+                        onDown={() => nudge(f.id, 1)}
+                      />
+                    ) : (
+                      <Text style={styles.folderRowCount}>
+                        {`${count} deck${count === 1 ? '' : 's'} ›`}
+                      </Text>
+                    )}
                   </Pressable>
                 </MetalCard>
               )

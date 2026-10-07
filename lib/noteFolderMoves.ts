@@ -45,3 +45,48 @@ export function applyMoves(folders: NoteFolder[], moves: Record<string, string |
     return { ...f, parentId: target }
   })
 }
+
+// ---------- order ----------
+
+// The phone's own order for the folders inside one parent (null parent = the class's top level).
+const ORDER_KEY = 'jmsnote.noteFolderOrder'
+type Orders = Record<string, Record<string, string[]>>
+
+async function loadOrders(): Promise<Orders> {
+  try {
+    const raw = await AsyncStorage.getItem(ORDER_KEY)
+    return raw ? JSON.parse(raw) : {}
+  } catch {
+    return {}
+  }
+}
+
+const parentKey = (parentId: string | null): string => parentId ?? '__root'
+
+export async function loadOrder(courseId: string): Promise<Record<string, string[]>> {
+  return (await loadOrders())[courseId] ?? {}
+}
+
+export async function saveOrder(courseId: string, parentId: string | null, ids: string[]): Promise<void> {
+  const all = await loadOrders()
+  await AsyncStorage.setItem(
+    ORDER_KEY,
+    JSON.stringify({ ...all, [courseId]: { ...(all[courseId] ?? {}), [parentKey(parentId)]: ids } })
+  )
+}
+
+// Sorts one parent's folders: ones the phone has an order for come first, in that order; any
+// others (new folders from the desktop) follow in the desktop's own order.
+export function sortFolders(
+  siblings: NoteFolder[],
+  parentId: string | null,
+  orders: Record<string, string[]>
+): NoteFolder[] {
+  const saved = orders[parentKey(parentId)] ?? []
+  const base = [...siblings].sort((a, b) => a.order - b.order || a.name.localeCompare(b.name))
+  const rank = (id: string): number => {
+    const i = saved.indexOf(id)
+    return i === -1 ? Number.MAX_SAFE_INTEGER : i
+  }
+  return base.sort((a, b) => rank(a.id) - rank(b.id))
+}

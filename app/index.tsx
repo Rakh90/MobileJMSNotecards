@@ -10,10 +10,11 @@ import { findFolderByName } from '../lib/driveApi'
 import { useDecks } from '../lib/useDecks'
 import { useDeckFolders } from '../lib/useDeckFolders'
 import { useQuizScores } from '../lib/useQuizScores'
-import { createFolder, setDeckFolder, trashFolder, moveFolder, descendantFolderIds } from '../lib/deckFolders'
+import { createFolder, setDeckFolder, trashFolder, moveFolder, nudgeFolder, descendantFolderIds } from '../lib/deckFolders'
 import DeckRow from '../components/DeckRow'
 import MoveToFolderModal from '../components/MoveToFolderModal'
 import MoveFolderModal from '../components/MoveFolderModal'
+import ReorderArrows from '../components/ReorderArrows'
 import { useTheme, type Theme } from '../lib/theme'
 import { MetalButton, MetalCard } from '../components/Metal'
 import FolderIcon from '../components/FolderIcon'
@@ -32,6 +33,7 @@ export default function DeckListScreen() {
   const navigation = useNavigation()
   const { workspaceUri, setWorkspaceUri, decks, loading, error, setError, refresh, offline, pending } = useDecks()
   const [studyPickerOpen, setStudyPickerOpen] = useState(false)
+  const [arranging, setArranging] = useState(false)
   const [mode, setModeState] = useState<'flashcards' | 'notes'>('flashcards')
   useEffect(() => {
     AsyncStorage.getItem('jmsnote.homeMode')
@@ -63,6 +65,11 @@ export default function DeckListScreen() {
                 { label: 'Study together…', icon: 'study', onPress: () => setStudyPickerOpen(true) },
                 { label: 'New folder', icon: 'plus', onPress: () => setCreatingFolder(true) },
                 {
+                  label: arranging ? 'Done rearranging' : 'Rearrange folders',
+                  icon: 'swap',
+                  onPress: () => setArranging((v) => !v)
+                },
+                {
                   label: 'Trash',
                   icon: 'trash',
                   badge: trashedCount > 0 ? String(trashedCount) : undefined,
@@ -78,7 +85,7 @@ export default function DeckListScreen() {
         : undefined
     })
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [navigation, theme, workspaceUri, trashedCount, decks.length, mode])
+  }, [navigation, theme, workspaceUri, trashedCount, decks.length, mode, arranging])
 
   async function chooseFolder(): Promise<void> {
     const uri = await pickWorkspaceFolder()
@@ -113,6 +120,11 @@ export default function DeckListScreen() {
     } finally {
       setDriveConnecting(false)
     }
+  }
+
+  async function nudge(id: string, direction: -1 | 1): Promise<void> {
+    await nudgeFolder(id, direction)
+    reloadFolders()
   }
 
   async function changeFolder(): Promise<void> {
@@ -266,7 +278,7 @@ export default function DeckListScreen() {
               <>
                 {folders
                   .filter((f) => f.parentId === null)
-                  .map((f) => {
+                  .map((f, fi, arr) => {
                     // Counts every deck anywhere in this folder's subtree, not just ones
                     // assigned directly to it, since decks typically end up in the deepest
                     // (leaf) subfolder rather than the top-level container.
@@ -276,16 +288,26 @@ export default function DeckListScreen() {
                       <MetalCard key={f.id} theme={theme} style={{ marginBottom: 10 }}>
                         <Pressable
                           style={styles.folderRow}
-                          onPress={() => router.push(`/folder/${f.id}?name=${encodeURIComponent(f.name)}`)}
-                          onLongPress={() => openFolderMenu(f)}
+                          onPress={() => !arranging && router.push(`/folder/${f.id}?name=${encodeURIComponent(f.name)}`)}
+                          onLongPress={() => !arranging && openFolderMenu(f)}
                         >
                           <View style={styles.folderNameRow}>
                             <FolderIcon color={theme.accent} size={20} />
                             <Text style={styles.folderRowText}>{f.name}</Text>
                           </View>
-                          <Text style={styles.folderRowCount}>
-                            {`${count} deck${count === 1 ? '' : 's'} ›`}
-                          </Text>
+                          {arranging ? (
+                            <ReorderArrows
+                              theme={theme}
+                              canUp={fi > 0}
+                              canDown={fi < arr.length - 1}
+                              onUp={() => nudge(f.id, -1)}
+                              onDown={() => nudge(f.id, 1)}
+                            />
+                          ) : (
+                            <Text style={styles.folderRowCount}>
+                              {`${count} deck${count === 1 ? '' : 's'} ›`}
+                            </Text>
+                          )}
                         </Pressable>
                       </MetalCard>
                     )

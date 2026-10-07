@@ -129,3 +129,20 @@ export async function moveFolder(id: string, newParentId: string | null): Promis
   await saveFolders(all.map((f) => (f.id === id ? { ...f, parentId: newParentId } : f)))
   return true
 }
+
+// Moves a folder one place up or down among the folders next to it (same parent). The order is
+// the folders' order in storage, so this swaps it with its neighbour there.
+export async function nudgeFolder(id: string, direction: -1 | 1): Promise<void> {
+  const all = await loadAllFolders()
+  const me = all.find((f) => f.id === id)
+  if (!me) return
+  const siblings = all.filter((f) => f.parentId === me.parentId && !f.deletedAt)
+  const pos = siblings.findIndex((f) => f.id === id)
+  const neighbour = siblings[pos + direction]
+  if (!neighbour) return
+  const a = all.findIndex((f) => f.id === id)
+  const b = all.findIndex((f) => f.id === neighbour.id)
+  const next = [...all]
+  ;[next[a], next[b]] = [next[b], next[a]]
+  await saveFolders(next)
+}
