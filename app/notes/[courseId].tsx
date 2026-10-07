@@ -4,6 +4,10 @@ import { router, useLocalSearchParams, useNavigation } from 'expo-router'
 import { MetalCard } from '../../components/Metal'
 import FolderIcon from '../../components/FolderIcon'
 import MenuButton from '../../components/MenuButton'
+import ActionSheet from '../../components/ActionSheet'
+import MoveFolderModal from '../../components/MoveFolderModal'
+import { applyMoves, clearFolderMove, loadMoves, setFolderMove } from '../../lib/noteFolderMoves'
+import type { DeckFolder } from '../../lib/deckFolders'
 import { useTheme, type Theme } from '../../lib/theme'
 import { downloadCourse, loadCourse, readCachedCourse, type CourseData, type NoteSummary } from '../../lib/notes'
 
@@ -21,6 +25,14 @@ export default function CourseScreen() {
   const [error, setError] = useState<string | null>(null)
   const [search, setSearch] = useState('')
   const [progress, setProgress] = useState<string | null>(null)
+  const [moves, setMoves] = useState<Record<string, string | null>>({})
+  const [folderMenu, setFolderMenu] = useState<{ id: string; name: string } | null>(null)
+  const [moveTarget, setMoveTarget] = useState<{ id: string; name: string } | null>(null)
+  useEffect(() => {
+    loadMoves(courseId).then(setMoves)
+  }, [courseId])
+  // The class's folders as arranged on this phone (see lib/noteFolderMoves.ts).
+  const effFolders = useMemo(() => (data ? applyMoves(data.folders, moves) : []), [data, moves])
 
   const refresh = useCallback(async () => {
     setLoading(true)
@@ -52,13 +64,16 @@ export default function CourseScreen() {
           theme={theme}
           items={[
             { label: 'Refresh', icon: 'refresh', onPress: refresh },
+            ...(currentFolder
+              ? [{ label: 'Move this folder…', icon: 'swap' as const, onPress: () => setMoveTarget({ id: currentFolder, name: name ? decodeURIComponent(name) : 'Folder' }) }]
+              : []),
             { label: 'Download for offline', icon: 'download', onPress: downloadAll }
           ]}
         />
       )
     })
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [navigation, theme, name, data, refresh])
+  }, [navigation, theme, name, data, refresh, currentFolder])
 
   async function downloadAll(): Promise<void> {
     if (!data) return
@@ -77,7 +92,7 @@ export default function CourseScreen() {
     const counts = new Map<string, number>()
     if (!data) return counts
     const children = new Map<string | null, string[]>()
-    for (const f of data.folders) {
+    for (const f of effFolders) {
       const list = children.get(f.parentId) ?? []
       list.push(f.id)
       children.set(f.parentId, list)
@@ -85,13 +100,13 @@ export default function CourseScreen() {
     const direct = new Map<string, number>()
     for (const n of data.notes) if (n.folderId) direct.set(n.folderId, (direct.get(n.folderId) ?? 0) + 1)
     const total = (id: string): number => (direct.get(id) ?? 0) + (children.get(id) ?? []).reduce((s, c) => s + total(c), 0)
-    for (const f of data.folders) counts.set(f.id, total(f.id))
+    for (const f of effFolders) counts.set(f.id, total(f.id))
     return counts
-  }, [data])
+  }, [data, effFolders])
 
   const query = search.trim().toLowerCase()
   const folders = data
-    ? data.folders.filter((f) => f.parentId === currentFolder).sort((a, b) => a.order - b.order || a.name.localeCompare(b.name))
+    ? effFolders.filter((f) => f.parentId === currentFolder).sort((a, b) => a.order - b.order || a.name.localeCompare(b.name))
     : []
   const notes: NoteSummary[] = data
     ? query
@@ -135,6 +150,7 @@ export default function CourseScreen() {
                 <Pressable
                   style={styles.row}
                   onPress={() => router.push(`/notes/${courseId}?name=${encodeURIComponent(f.name)}&folderId=${f.id}`)}
+                  onLongPress={() => setFolderMenu({ id: f.id, name: f.name })}
                 >
                   <View style={styles.nameRow}>
                     <FolderIcon color={theme.accent} size={20} />
@@ -170,6 +186,48 @@ export default function CourseScreen() {
           </View>
         )}
       </ScrollView>
+      <ActionSheet
+        visible={folderMenu !== null}
+        theme={theme}
+        title={folderMenu?.name ?? ''}
+        message="Moving a folder only changes how it's arranged on this phone."
+        onClose={() => setFolderMenu(null)}
+        actions={[
+          {
+            label: 'Move folder…',
+            icon: 'folder',
+            onPress: () => {
+              const target = folderMenu
+              setTimeout(() => setMoveTarget(target), 250)
+            }
+          },
+          ...(folderMenu && folderMenu.id in moves
+            ? [
+                {
+                  label: 'Put back where the desktop has it',
+                  icon: 'swap' as const,
+                  onPress: async () => {
+                    await clearFolderMove(courseId, folderMenu.id)
+                    setMoves(await loadMoves(courseId))
+                  }
+                }
+              ]
+            : [])
+        ]}
+      />
+      <MoveFolderModal
+        target={moveTarget}
+        folders={effFolders.map<DeckFolder>((f) => ({ id: f.id, name: f.name, parentId: f.parentId, deletedAt: null }))}
+        theme={theme}
+        onChoose={async (parentId) => {
+          const t = moveTarget
+          setMoveTarget(null)
+          if (!t) return
+          await setFolderMove(courseId, t.id, parentId)
+          setMoves(await loadMoves(courseId))
+        }}
+        onClose={() => setMoveTarget(null)}
+      />
     </View>
   )
 }
