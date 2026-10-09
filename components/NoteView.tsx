@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react'
-import { Image, Linking, Platform, ScrollView, StyleSheet, Text, View, type TextStyle } from 'react-native'
+import { Dimensions, Image, Linking, Platform, ScrollView, StyleSheet, Text, View, type TextStyle } from 'react-native'
 import MarkdownIt from 'markdown-it'
 import NoteTable, { type TableCell } from './NoteTable'
 import { attachmentName, localAttachment, type CourseData } from '../lib/notes'
@@ -298,12 +298,27 @@ function renderBlocks(nodes: TreeNode[], ctx: Ctx, depth = 0): React.ReactNode[]
   return nodes.map((n) => renderBlock(n, ctx, depth))
 }
 
+// Spare room under a paragraph. Android measures a Text's height with the font's normal weight, but
+// with the system "Bold text" setting (or a larger font) it then draws wider letters - the text
+// wraps onto more lines than were measured and the last line(s) are clipped off. Leaving some
+// extra height (more for longer paragraphs, which gain more lines) keeps every line visible.
+function slackBelow(children: Tok[], fontSize: number): number {
+  const chars = plainText(children).length
+  const perLine = Math.max(20, (Dimensions.get('window').width - 32) / (fontSize * 0.52))
+  const lines = chars / perLine
+  return Math.ceil(1 + lines * 0.12) * fontSize * 1.3
+}
+
 function paragraphLike(children: Tok[], ctx: Ctx, textStyle: TextStyle, key: string, tight = false) {
   const { content, images } = inlineTokens(children, ctx, key)
   return (
     <View key={key} style={{ marginBottom: tight ? 2 : 10 }}>
       {content.length > 0 && (
-        <Text style={textStyle} textBreakStrategy="simple" {...blockProps(ctx, key)}>
+        <Text
+          style={[textStyle, { paddingBottom: slackBelow(children, textStyle.fontSize ?? 15.5) }]}
+          textBreakStrategy="simple"
+          {...blockProps(ctx, key)}
+        >
           {content}
         </Text>
       )}
@@ -449,6 +464,7 @@ function cellOf(children: Tok[], ctx: Ctx, bold: boolean, align: string | null):
           style={{
             color: ctx.theme.text,
             fontSize: 13.5,
+            paddingBottom: (0.6 + (text.length / 28) * 0.12) * 13.5 * 1.3,
             fontWeight: bold ? '700' : '400',
             textAlign: align === 'center' ? 'center' : align === 'right' ? 'right' : 'left'
           }}
