@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react'
-import { Dimensions, Image, Linking, Platform, ScrollView, StyleSheet, Text, View, type TextStyle } from 'react-native'
+import { Image, Linking, Platform, ScrollView, StyleSheet, Text, View, type TextStyle } from 'react-native'
 import MarkdownIt from 'markdown-it'
 import NoteTable, { type TableCell } from './NoteTable'
 import { attachmentName, localAttachment, type CourseData } from '../lib/notes'
@@ -114,11 +114,13 @@ interface Frame {
 let keyCounter = 0
 const nextKey = (): string => `k${keyCounter++}`
 
-function inlineTokens(children: Tok[], ctx: Ctx, cid: string): { content: React.ReactNode[]; images: string[] } {
+function inlineTokens(children: Tok[], ctx: Ctx, cid: string): { content: React.ReactNode[]; images: string[]; flat: string } {
   const stack: Frame[] = [{ style: {}, nodes: [] }]
   const images: string[] = []
   // Running character position within this text block, so a find match can be mapped to a line.
   let offset = 0
+  // The plain text exactly as drawn (no styling), in case a block has to be re-drawn from it.
+  let flat = ''
   const findRe = ctx.find ? new RegExp(escapeRegExp(ctx.find), 'gi') : null
 
   // Plain text, with every find match swapped for a highlighted mark.
@@ -147,6 +149,7 @@ function inlineTokens(children: Tok[], ctx: Ctx, cid: string): { content: React.
       if (last < text.length) nodes.push(text.slice(last))
     }
     offset += text.length
+    flat += text
     return nodes
   }
 
@@ -184,6 +187,7 @@ function inlineTokens(children: Tok[], ctx: Ctx, cid: string): { content: React.
       case 'hardbreak':
         top().nodes.push('\n')
         offset += 1
+        flat += '\n'
         break
       case 'strong_open':
         push({ fontWeight: '700' })
@@ -213,6 +217,7 @@ function inlineTokens(children: Tok[], ctx: Ctx, cid: string): { content: React.
           </Text>
         )
         offset += t.content.length + 2
+        flat += ` ${t.content} `
         break
       case 'link_open': {
         const href = attr(t, 'href') ?? ''
@@ -236,17 +241,19 @@ function inlineTokens(children: Tok[], ctx: Ctx, cid: string): { content: React.
         if (/^<br\s*\/?>$/i.test(t.content.trim())) {
           top().nodes.push('\n')
           offset += 1
+          flat += '\n'
         }
         break
       default:
         if (t.content) {
           top().nodes.push(t.content)
           offset += t.content.length
+          flat += t.content
         }
     }
   }
   while (stack.length > 1) pop()
-  return { content: stack[0].nodes, images }
+  return { content: stack[0].nodes, images, flat }
 }
 
 function plainText(children: Tok[]): string {
@@ -298,30 +305,51 @@ function renderBlocks(nodes: TreeNode[], ctx: Ctx, depth = 0): React.ReactNode[]
   return nodes.map((n) => renderBlock(n, ctx, depth))
 }
 
-// Spare room under a paragraph. Android measures a Text's height with the font's normal weight, but
-// with the system "Bold text" setting (or a larger font) it then draws wider letters - the text
-// wraps onto more lines than were measured and the last line(s) are clipped off. Leaving some
-// extra height (more for longer paragraphs, which gain more lines) keeps every line visible.
-function slackBelow(children: Tok[], fontSize: number): number {
-  const chars = plainText(children).length
-  const perLine = Math.max(20, (Dimensions.get('window').width - 32) / (fontSize * 0.52))
-  const lines = chars / perLine
-  return Math.ceil(1 + lines * 0.12) * fontSize * 1.3
+// A block of text that checks its own drawing. After Android lays the text out, onTextLayout reports
+// the real lines: if the box is shorter than those lines it is made tall enough, and if the layout
+// is missing the end of the text (long paragraphs were showing without their last line), the
+// missing tail is drawn underneath so nothing is ever hidden.
+function Para({
+  content,
+  flat,
+  style,
+  blockExtra
+}: {
+  content: React.ReactNode[]
+  flat: string
+  style: TextStyle | TextStyle[]
+  blockExtra?: { ref?: unknown; onTextLayout?: (e: any) => void }
+}) {
+  const [info, setInfo] = useState<{ height: number; covered: number } | null>(null)
+  const missing = info && flat.length - info.covered > 3 ? flat.slice(info.covered) : ''
+  return (
+    <>
+      <Text
+        style={[style, info ? { minHeight: info.height } : null]}
+        textBreakStrategy="simple"
+        ref={blockExtra?.ref as never}
+        onTextLayout={(e) => {
+          blockExtra?.onTextLayout?.(e)
+          const lines = e.nativeEvent.lines
+          if (!lines.length) return
+          const last = lines[lines.length - 1]
+          const height = last.y + last.height
+          const covered = lines.reduce((n, l) => n + l.text.length, 0)
+          setInfo((prev) => (prev && prev.height === height && prev.covered === covered ? prev : { height, covered }))
+        }}
+      >
+        {content}
+      </Text>
+      {missing ? <Text style={style}>{missing}</Text> : null}
+    </>
+  )
 }
 
 function paragraphLike(children: Tok[], ctx: Ctx, textStyle: TextStyle, key: string, tight = false) {
-  const { content, images } = inlineTokens(children, ctx, key)
+  const { content, images, flat } = inlineTokens(children, ctx, key)
   return (
     <View key={key} style={{ marginBottom: tight ? 2 : 10 }}>
-      {content.length > 0 && (
-        <Text
-          style={[textStyle, { paddingBottom: slackBelow(children, textStyle.fontSize ?? 15.5) }]}
-          textBreakStrategy="simple"
-          {...blockProps(ctx, key)}
-        >
-          {content}
-        </Text>
-      )}
+      {content.length > 0 && <Para content={content} flat={flat} style={textStyle} blockExtra={blockProps(ctx, key)} />}
       {images.map((src, i) => (
         <NoteImage key={i} src={src} ctx={ctx} />
       ))}
@@ -454,23 +482,22 @@ function cellOf(children: Tok[], ctx: Ctx, bold: boolean, align: string | null):
   const words = text.split(/\s+/)
   // Built once, up front (not when the table draws), so find matches are numbered in reading order.
   const cid = nextKey()
-  const { content, images } = inlineTokens(children, ctx, cid)
+  const { content, images, flat } = inlineTokens(children, ctx, cid)
   const props = blockProps(ctx, cid)
   const node = (
     <View>
       {content.length > 0 && (
-        <Text
-          {...props}
+        <Para
+          content={content}
+          flat={flat}
+          blockExtra={props}
           style={{
             color: ctx.theme.text,
             fontSize: 13.5,
-            paddingBottom: (0.6 + (text.length / 28) * 0.12) * 13.5 * 1.3,
             fontWeight: bold ? '700' : '400',
             textAlign: align === 'center' ? 'center' : align === 'right' ? 'right' : 'left'
           }}
-        >
-          {content}
-        </Text>
+        />
       )}
       {images.map((src, i) => (
         <NoteImage key={i} src={src} ctx={ctx} />

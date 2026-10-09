@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { ActivityIndicator, Keyboard, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native'
 import { router, useLocalSearchParams, useNavigation } from 'expo-router'
+import Constants from 'expo-constants'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import NoteView from '../../components/NoteView'
 import Icon from '../../components/Icon'
@@ -146,6 +147,7 @@ export default function NoteScreen() {
               onCount={setCount}
               scrollRef={scrollRef}
             />
+            <Text style={styles.version}>{`JMSNote app ${Constants.expoConfig?.version ?? ''}`}</Text>
           </>
         )}
         {busy && !note && (
@@ -165,6 +167,7 @@ function makeStyles(theme: Theme) {
     content: { padding: 16 },
     title: { fontSize: 24, fontWeight: '700', color: theme.text, marginBottom: 14 },
     stale: { fontSize: 13, color: theme.warning, marginBottom: 10 },
+    version: { fontSize: 11, color: theme.textMuted, textAlign: 'center', marginTop: 8 },
     findBar: {
       flexDirection: 'row',
       alignItems: 'center',
