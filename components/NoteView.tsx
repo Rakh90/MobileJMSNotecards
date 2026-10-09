@@ -305,10 +305,11 @@ function renderBlocks(nodes: TreeNode[], ctx: Ctx, depth = 0): React.ReactNode[]
   return nodes.map((n) => renderBlock(n, ctx, depth))
 }
 
-// A block of text that checks its own drawing. After Android lays the text out, onTextLayout reports
-// the real lines: if the box is shorter than those lines it is made tall enough, and if the layout
-// is missing the end of the text (long paragraphs were showing without their last line), the
-// missing tail is drawn underneath so nothing is ever hidden.
+// A block of text that makes sure its last lines are not clipped. Android sizes the box from its own
+// measurement, but some phones draw the text wider (system Bold text, custom fonts), so it wraps
+// onto more lines than the box was sized for and the last line(s) disappear. After the first layout
+// the box is given extra spare height, and if the layout is ever missing the end of the text, that
+// tail is drawn underneath so nothing stays hidden.
 function Para({
   content,
   flat,
@@ -333,7 +334,11 @@ function Para({
           const lines = e.nativeEvent.lines
           if (!lines.length) return
           const last = lines[lines.length - 1]
-          const height = last.y + last.height
+          // The height Android measured, plus spare lines. The spare room has to be real height on
+          // the Text itself (not padding - a TextView never draws text inside its padding): on
+          // phones with the "Bold text" setting or a custom font, the text is drawn wider than it
+          // was measured, wraps onto extra lines, and everything past the measured height is lost.
+          const height = last.y + last.height + (1 + Math.ceil(lines.length * 0.05)) * last.height
           const covered = lines.reduce((n, l) => n + l.text.length, 0)
           setInfo((prev) => (prev && prev.height === height && prev.covered === covered ? prev : { height, covered }))
         }}
