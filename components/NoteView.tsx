@@ -316,7 +316,7 @@ function paragraphLike(children: Tok[], ctx: Ctx, textStyle: TextStyle, key: str
 
 function renderBlock(n: TreeNode, ctx: Ctx, depth: number): React.ReactNode {
   const { theme } = ctx
-  const body: TextStyle = { color: theme.text, fontSize: 15.5, lineHeight: 23 }
+  const body: TextStyle = { color: theme.text, fontSize: 15.5 }
   const key = nextKey()
   const t = n.tok
   switch (t.type) {
@@ -327,7 +327,7 @@ function renderBlock(n: TreeNode, ctx: Ctx, depth: number): React.ReactNode {
       return paragraphLike(
         inline?.tok.children ?? [],
         ctx,
-        { ...body, fontSize: size, lineHeight: size * 1.35, fontWeight: '700' },
+        { ...body, fontSize: size, fontWeight: '700' },
         key
       )
     }
@@ -413,7 +413,6 @@ function renderListItem(item: TreeNode, ctx: Ctx, depth: number, marker: string)
           width: checkbox ? 26 : marker.length > 2 ? 30 : 22,
           color: checkbox ? theme.accent : theme.textMuted,
           fontSize: checkbox ? 18 : 15.5,
-          lineHeight: 23
         }}
       >
         {checkbox ?? marker}
@@ -425,7 +424,7 @@ function renderListItem(item: TreeNode, ctx: Ctx, depth: number, marker: string)
 
 // A list item's own paragraphs sit tight against the next nested list.
 function renderListContent(kids: TreeNode[], ctx: Ctx, depth: number): React.ReactNode[] {
-  const body: TextStyle = { color: ctx.theme.text, fontSize: 15.5, lineHeight: 23 }
+  const body: TextStyle = { color: ctx.theme.text, fontSize: 15.5 }
   return kids.map((k) => {
     if (k.tok.type === 'paragraph_open') {
       const inline = k.kids.find((x) => x.tok.type === 'inline')
@@ -450,7 +449,6 @@ function cellOf(children: Tok[], ctx: Ctx, bold: boolean, align: string | null):
           style={{
             color: ctx.theme.text,
             fontSize: 13.5,
-            lineHeight: 19,
             fontWeight: bold ? '700' : '400',
             textAlign: align === 'center' ? 'center' : align === 'right' ? 'right' : 'left'
           }}

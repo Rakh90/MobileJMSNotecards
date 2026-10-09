@@ -80,6 +80,7 @@ export interface DriveChild {
   name: string
   mimeType: string
   modifiedTime: string
+  size?: string
 }
 
 export const DRIVE_FOLDER_MIME = FOLDER_MIME
@@ -93,7 +94,7 @@ export async function listChildren(parentId: string, onlyFolders = false): Promi
   let pageToken: string | undefined
   do {
     const url =
-      `${API}/files?q=${encodeURIComponent(q)}&pageSize=1000&fields=nextPageToken,files(id,name,mimeType,modifiedTime)` +
+      `${API}/files?q=${encodeURIComponent(q)}&pageSize=1000&fields=nextPageToken,files(id,name,mimeType,modifiedTime,size)` +
       (pageToken ? `&pageToken=${encodeURIComponent(pageToken)}` : '')
     const data = (await (await authedFetch(url)).json()) as { files: DriveChild[]; nextPageToken?: string }
     out.push(...data.files)

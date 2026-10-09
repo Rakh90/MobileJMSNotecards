@@ -41,7 +41,7 @@ export interface CourseData {
   folders: NoteFolder[]
   notes: NoteSummary[]
   // note id -> where its markdown lives on Drive
-  noteFiles: Record<string, { fileId: string; modifiedTime: string }>
+  noteFiles: Record<string, { fileId: string; modifiedTime: string; size?: number }>
   // attachment file name -> Drive file id
   attachments: Record<string, string>
   fetchedAt: string
@@ -155,7 +155,7 @@ async function fetchCourse(courseId: string): Promise<CourseData> {
   const noteFiles: CourseData['noteFiles'] = {}
   if (notesDirId) {
     for (const f of await listChildren(notesDirId)) {
-      if (f.name.endsWith('.md')) noteFiles[f.name.slice(0, -3)] = { fileId: f.id, modifiedTime: f.modifiedTime }
+      if (f.name.endsWith('.md')) noteFiles[f.name.slice(0, -3)] = { fileId: f.id, modifiedTime: f.modifiedTime, size: f.size ? Number(f.size) : undefined }
     }
   }
   const attachments: CourseData['attachments'] = {}
@@ -227,6 +227,41 @@ export interface NoteContent {
   stale: boolean
 }
 
+// Length of a string once saved as UTF-8 - compared with the size Drive reports for the file, to
+// catch a note that arrived incomplete.
+function utf8Length(s: string): number {
+  let n = 0
+  for (let i = 0; i < s.length; i++) {
+    const c = s.charCodeAt(i)
+    if (c < 0x80) n += 1
+    else if (c < 0x800) n += 2
+    else if (c >= 0xd800 && c <= 0xdbff) {
+      n += 4
+      i++
+    } else n += 3
+  }
+  return n
+}
+
+const isComplete = (text: string, size?: number): boolean => size === undefined || utf8Length(text) === size
+
+// Reads a note from Drive. If what arrived isn't the size Drive says the file is, it is fetched
+// again by downloading straight to a file instead.
+async function fetchNoteText(file: { fileId: string; size?: number }, path: string): Promise<string> {
+  let text = await readDriveText(file.fileId)
+  if (!isComplete(text, file.size)) {
+    try {
+      await ensureDir()
+      const { url, headers } = await driveMediaRequest(file.fileId)
+      const res = await FileSystem.downloadAsync(url, path, { headers })
+      if (res.status === 200) text = await FileSystem.readAsStringAsync(path)
+    } catch {
+      // keep what we have
+    }
+  }
+  return text
+}
+
 export async function readNote(data: CourseData, noteId: string): Promise<NoteContent> {
   const file = data.noteFiles[noteId]
   if (!file) throw new Error('That note is no longer on Drive.')
@@ -237,6 +272,8 @@ export async function readNote(data: CourseData, noteId: string): Promise<NoteCo
   if (haveCurrent) {
     try {
       raw = await FileSystem.readAsStringAsync(path)
+      // A saved copy that is the wrong size (e.g. cut short) is thrown away and fetched again.
+      if (!isComplete(raw, file.size)) raw = null
     } catch {
       raw = null
     }
@@ -244,7 +281,7 @@ export async function readNote(data: CourseData, noteId: string): Promise<NoteCo
   let stale = false
   if (raw === null) {
     try {
-      raw = await readDriveText(file.fileId)
+      raw = await fetchNoteText(file, path)
       try {
         await ensureDir()
         await FileSystem.writeAsStringAsync(path, raw)
