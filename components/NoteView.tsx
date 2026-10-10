@@ -69,6 +69,9 @@ interface Ctx {
 // highlighted words and not the whole note.
 const CurrentMatchContext = createContext(-1)
 
+// When on (long-press a note's title), every text block prints how it was laid out underneath it.
+const DebugContext = createContext(false)
+
 function FindMark({ idx, theme, children }: { idx: number; theme: Theme; children: string }) {
   const current = useContext(CurrentMatchContext)
   const active = idx === current
@@ -322,6 +325,9 @@ function Para({
   blockExtra?: { ref?: unknown; onTextLayout?: (e: any) => void }
 }) {
   const [info, setInfo] = useState<{ height: number; covered: number } | null>(null)
+  const debug = useContext(DebugContext)
+  const [viewH, setViewH] = useState(0)
+  const [lineCount, setLineCount] = useState(0)
   const missing = info && flat.length - info.covered > 3 ? flat.slice(info.covered) : ''
   return (
     <>
@@ -329,10 +335,12 @@ function Para({
         style={[style, info ? { minHeight: info.height } : null]}
         textBreakStrategy="simple"
         ref={blockExtra?.ref as never}
+        onLayout={debug ? (e) => setViewH(Math.round(e.nativeEvent.layout.height)) : undefined}
         onTextLayout={(e) => {
           blockExtra?.onTextLayout?.(e)
           const lines = e.nativeEvent.lines
           if (!lines.length) return
+          if (debug) setLineCount(lines.length)
           const last = lines[lines.length - 1]
           // The height Android measured, plus spare lines. The spare room has to be real height on
           // the Text itself (not padding - a TextView never draws text inside its padding): on
@@ -346,6 +354,11 @@ function Para({
         {content}
       </Text>
       {missing ? <Text style={style}>{missing}</Text> : null}
+      {debug && info ? (
+        <Text style={{ fontSize: 9, color: '#ff6b6b' }}>
+          {`lines ${lineCount} · text ${info.covered}/${flat.length} · layout ${Math.round(info.height)} · box ${viewH}`}
+        </Text>
+      ) : null}
     </>
   )
 }
@@ -545,7 +558,8 @@ export default function NoteView({
   find = '',
   current = 0,
   onCount,
-  scrollRef
+  scrollRef,
+  debug = false
 }: {
   body: string
   data: CourseData
@@ -555,6 +569,7 @@ export default function NoteView({
   current?: number
   onCount?: (count: number) => void
   scrollRef?: React.RefObject<ScrollView | null>
+  debug?: boolean
 }) {
   const matchesRef = useRef<FindMatch[]>([])
   const blocksRef = useRef(new Map<string, TextBlock>())
@@ -602,9 +617,11 @@ export default function NoteView({
   }, [current, find, content, scrollRef])
 
   return (
-    <CurrentMatchContext.Provider value={current}>
-      <View style={styles.root}>{content}</View>
-    </CurrentMatchContext.Provider>
+    <DebugContext.Provider value={debug}>
+      <CurrentMatchContext.Provider value={current}>
+        <View style={styles.root}>{content}</View>
+      </CurrentMatchContext.Provider>
+    </DebugContext.Provider>
   )
 }
 

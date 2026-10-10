@@ -20,6 +20,7 @@ export default function NoteScreen() {
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(true)
   const scrollRef = useRef<ScrollView>(null)
+  const [debug, setDebug] = useState(false)
 
   // find on page
   const [findOpen, setFindOpen] = useState(false)
@@ -135,7 +136,9 @@ export default function NoteScreen() {
       >
         {note && data && (
           <>
-            <Text style={styles.title}>{note.title}</Text>
+            <Text style={styles.title} onLongPress={() => setDebug((d) => !d)}>
+              {note.title}
+            </Text>
             {note.stale && <Text style={styles.stale}>Showing the saved copy — couldn't reach Drive.</Text>}
             <NoteView
               body={note.body}
@@ -146,6 +149,7 @@ export default function NoteScreen() {
               current={current}
               onCount={setCount}
               scrollRef={scrollRef}
+              debug={debug}
             />
             <Text style={styles.version}>{`JMSNote app ${Constants.expoConfig?.version ?? ''}`}</Text>
           </>
